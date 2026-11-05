@@ -9,6 +9,8 @@ import * as common from './views/common.js';
 import { mountChat } from './views/chat.js';
 import { savedNickname } from './views/observer.js';
 
+loadMeta();   // 영웅 목록/제한값을 소켓 접속과 동시에 미리 받아 둔다 (join 이후 대기 시간 제거)
+
 const roomId = location.pathname.split('/').filter(Boolean).pop() || '';
 const token = new URLSearchParams(location.hash.slice(1)).get('t') || '';
 

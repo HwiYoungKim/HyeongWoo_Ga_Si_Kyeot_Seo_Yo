@@ -9,10 +9,12 @@
 """
 from __future__ import annotations
 
+import atexit
 import json
 import logging
 import os
 import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import Any, Iterator
@@ -43,6 +45,9 @@ class RoomStore:
         return self.rooms_dir / f"{room_id}.json"
 
     def save(self, room_id: str, data: dict[str, Any]) -> None:
+        self.save_text(room_id, json.dumps(data, ensure_ascii=False, separators=(",", ":")))
+
+    def save_text(self, room_id: str, text: str) -> None:
         path = self._path(room_id)
         fd, tmp_name = tempfile.mkstemp(dir=self.rooms_dir, prefix=".tmp-", suffix=".json")
         try:
@@ -51,7 +56,7 @@ class RoomStore:
             except (AttributeError, OSError):
                 pass
             with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
+                f.write(text)
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(tmp_name, path)
@@ -92,3 +97,77 @@ class RoomStore:
             except OSError:
                 continue
         return removed
+
+
+class WriteBehind:
+    """디스크 저장을 입찰 처리 경로 밖으로 뺀다.
+
+    fsync 는 윈도우/외장 드라이브에서 수십 ms 가 걸릴 수 있다. 방 락을 쥔 채로 기다리면 그동안
+    모든 입찰이 줄을 선다. 그래서 (1) 락 안에서는 JSON 문자열만 만들어 맡기고
+    (2) 별도 스레드가 같은 방의 연속 저장을 하나로 묶어(delay 초) 파일에 쓴다.
+    프로그램을 정상 종료하거나 flush() 를 부르면 대기 중인 것을 모두 즉시 쓴다.
+    """
+
+    def __init__(self, store: RoomStore, delay: float = 0.25):
+        self.store = store
+        self.delay = delay
+        self._pending: dict[str, tuple[float, str]] = {}     # room_id -> (쓸 시각, JSON)
+        self._cond = threading.Condition()
+        self._io = threading.Lock()
+        self._stop = False
+        self._thread = threading.Thread(target=self._loop, name="room-writer", daemon=True)
+        self._thread.start()
+        atexit.register(self.flush)
+
+    def submit(self, room_id: str, text: str) -> None:
+        with self._cond:
+            due = self._pending[room_id][0] if room_id in self._pending else time.monotonic() + self.delay
+            self._pending[room_id] = (due, text)        # 같은 방의 이전 대기분은 최신으로 교체
+            self._cond.notify()
+
+    def discard(self, room_id: str) -> None:
+        """방 삭제 시: 대기 중인 저장을 버리고, 쓰는 중이면 끝날 때까지 기다린다 (삭제한 파일이 되살아나지 않게)."""
+        with self._cond:
+            self._pending.pop(room_id, None)
+        with self._io:
+            pass
+
+    def flush(self) -> None:
+        with self._cond:
+            items = list(self._pending.items())
+            self._pending.clear()
+        for room_id, (_due, text) in items:
+            self._write(room_id, text)
+
+    def close(self) -> None:
+        self.flush()
+        with self._cond:
+            self._stop = True
+            self._cond.notify()
+
+    def _write(self, room_id: str, text: str) -> None:
+        with self._io:
+            try:
+                self.store.save_text(room_id, text)
+            except OSError:
+                log.exception("방 저장 실패: %s", room_id)
+
+    def _loop(self) -> None:
+        while True:
+            with self._cond:
+                while not self._stop:
+                    if self._pending:
+                        wait = min(d for d, _ in self._pending.values()) - time.monotonic()
+                        if wait <= 0:
+                            break
+                        self._cond.wait(wait)
+                    else:
+                        self._cond.wait()
+                if self._stop:
+                    return
+                now = time.monotonic()
+                ready = [(rid, t) for rid, (d, t) in self._pending.items() if d <= now]
+                for rid, _ in ready:
+                    self._pending.pop(rid, None)
+            for rid, text in ready:
+                self._write(rid, text)

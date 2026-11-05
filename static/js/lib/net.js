@@ -37,7 +37,14 @@ export class Connection {
       this._emit('fatal', '실시간 통신 모듈을 불러오지 못했습니다.');
       return;
     }
-    this.socket = io({ reconnectionDelay: 500, reconnectionDelayMax: 4000 });
+    // 웹소켓으로 바로 접속한다 (폴링으로 시작해 업그레이드하는 기본 방식보다 왕복 3~4번이 적다).
+    // 웹소켓이 막힌 네트워크에서는 tryAllTransports 로 폴링으로 자동 전환한다.
+    this.socket = io({
+      transports: ['websocket', 'polling'],
+      tryAllTransports: true,
+      reconnectionDelay: 300,
+      reconnectionDelayMax: 3000,
+    });
     const s = this.socket;
 
     s.on('connect', () => { this._emit('status', 'joining'); this._join(); });

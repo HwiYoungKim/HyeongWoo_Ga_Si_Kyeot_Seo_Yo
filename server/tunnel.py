@@ -27,14 +27,18 @@ def find_url(text: str) -> str | None:
     return m.group(0).lower() if m else None
 
 
-def start_quick_tunnel(port: int, *, timeout: float = 45.0, binary: str | None = None) -> tuple[subprocess.Popen, str]:
+def start_quick_tunnel(port: int, *, timeout: float = 45.0, binary: str | None = None,
+                       protocol: str = "auto") -> tuple[subprocess.Popen, str]:
     exe = binary or shutil.which("cloudflared")
     if not exe:
         raise TunnelError(
             "cloudflared 를 찾을 수 없습니다. 설치: winget install --id Cloudflare.cloudflared "
             "(설치 후 cmd 를 닫았다가 새로 여세요)")
+    cmd = [exe, "tunnel", "--url", f"http://127.0.0.1:{port}", "--no-autoupdate"]
+    if protocol in ("quic", "http2"):
+        cmd += ["--protocol", protocol]         # 학교/공용망에서 UDP(quic)가 막혀 느릴 때 http2 로 바꿔 본다
     proc = subprocess.Popen(
-        [exe, "tunnel", "--url", f"http://127.0.0.1:{port}", "--no-autoupdate"],
+        cmd,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
     )
     atexit.register(stop_tunnel, proc)

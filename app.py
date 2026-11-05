@@ -52,6 +52,8 @@ def build_parser() -> argparse.ArgumentParser:
                      help="터널/도메인 등 외부 공개 주소. 초대 링크의 기본 주소로 쓰인다")
     net.add_argument("--tunnel", action="store_true",
                      help="외부 접속용 Cloudflare 터널을 자동으로 켜고 그 주소를 링크에 쓴다 (cloudflared 필요)")
+    net.add_argument("--tunnel-protocol", choices=["auto", "quic", "http2"], default="auto",
+                     help="터널 전송 방식. 연결이 느리거나 끊기면 http2 를 시도해 보세요 (학교/공용 와이파이는 UDP 가 막힌 경우가 많음)")
     net.add_argument("--trust-proxy", action="store_true",
                      help="리버스 프록시/터널 뒤에서 실행할 때만 켠다 (X-Forwarded-* 신뢰)")
     net.add_argument("--cert", default=None, help="HTTPS 인증서 파일(PEM)")
@@ -197,7 +199,7 @@ def main(argv: list[str] | None = None) -> int:
         from server.tunnel import TunnelError, start_quick_tunnel
         print("외부 접속용 터널을 켜는 중입니다… (최대 45초)")
         try:
-            tunnel_proc, public_url = start_quick_tunnel(args.port)
+            tunnel_proc, public_url = start_quick_tunnel(args.port, protocol=args.tunnel_protocol)
         except TunnelError as e:
             print(f"터널을 켤 수 없습니다: {e}", file=sys.stderr)
             return 2
@@ -252,6 +254,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"서버를 시작할 수 없습니다: {e}\n(포트 {cfg.port} 가 이미 사용 중이면 --port 로 다른 번호를 지정하세요.)",
               file=sys.stderr)
         return 1
+    auction.manager.flush()           # 대기 중인 저장을 모두 디스크에 쓴다
     if mirror is not None:
         mirror.stop()
     print("\n서버를 종료합니다. 방 데이터는 data 폴더에 저장되어 있습니다.")

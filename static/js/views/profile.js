@@ -8,7 +8,7 @@ export function roleIcon(role, { lit = true, small = false } = {}) {
   if (!ROLE_NAME[role]) return null;
   return h('img', {
     class: `role-icon role-${role}${lit ? ' lit' : ''}${small ? ' role-icon-sm' : ''}`,
-    src: `/static/img/role-${role}.svg`, alt: ROLE_NAME[role], title: ROLE_NAME[role],
+    src: new URL(`../../img/role-${role}.svg`, import.meta.url).href, alt: ROLE_NAME[role], title: ROLE_NAME[role],
   });
 }
 

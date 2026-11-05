@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
@@ -33,6 +34,7 @@ log = logging.getLogger("auction.socket")
 
 AUTH_FAIL_MESSAGE = "접속 정보가 올바르지 않거나 만료되었습니다."
 JOIN_TIMEOUT_SEC = 15
+PRESENCE_DELAY_SEC = 0.2
 MAX_CONNECTIONS = 300
 
 
@@ -63,6 +65,8 @@ class SocketApi:
         self.cfg = cfg
         self.sessions: dict[str, Session] = {}
         self.connected: set[str] = set()
+        self._pending_presence: set[str] = set()
+        self._pending_lock = threading.Lock()
         self.join_failures = security.FailureLimiter(limit=20, window=60, lockout=120)
         self.buckets = {
             "join": security.RateLimiter(capacity=5, refill_per_sec=0.5),
@@ -84,6 +88,29 @@ class SocketApi:
             host = views.host_view(handle.room, now, online, host_online)
         self.sio.emit("state", pub, to=pub_room(room_id))
         self.sio.emit("state", host, to=host_room(room_id))
+
+    def emit_state_soon(self, handle: RoomHandle) -> None:
+        """입장/퇴장처럼 급하지 않은 변화는 PRESENCE_DELAY 동안 모아 한 번만 보낸다.
+
+        30명이 동시에 접속하면 입장마다 전원에게 전체 상태를 보내는 대신 한두 번으로 줄어든다.
+        (입찰/낙찰 같은 경매 이벤트는 emit_state 로 즉시 보낸다.)
+        """
+        room_id = handle.room.id
+        with self._pending_lock:
+            if room_id in self._pending_presence:
+                return
+            self._pending_presence.add(room_id)
+
+        def run():
+            self.sio.sleep(PRESENCE_DELAY_SEC)
+            with self._pending_lock:
+                self._pending_presence.discard(room_id)
+            try:
+                self.emit_state(handle)
+            except Exception:
+                log.exception("접속 현황 전송 오류")
+
+        self.sio.start_background_task(run)
 
     def emit_timer(self, handle: RoomHandle) -> None:
         with handle.lock:
@@ -138,7 +165,7 @@ class SocketApi:
                 bucket.forget(sid)
             if sess is not None:
                 self.manager.remove_online(sess.handle, sid)
-                self.emit_state(sess.handle)
+                self.emit_state_soon(sess.handle)
 
         self._on("join", None, "join", self._join)
         self._on("sync", ("host", "leader", "observer"), "default", self._sync)
@@ -236,7 +263,7 @@ class SocketApi:
         snapshot = self.snapshot_for(sess)
         with handle.lock:
             chat = list(handle.room.chat)
-        self.emit_state(handle)        # 다른 참가자들에게 접속 현황 갱신
+        self.emit_state_soon(handle)   # 다른 참가자들에게 접속 현황 갱신 (모아서 전송)
         return {
             "ok": True,
             "role": auth.role,

@@ -7,7 +7,7 @@
   <meta name="robots" content="noindex, nofollow">
   <title>선수 경매</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="{{ asset('css/style.css') }}">
 </head>
 <body class="page-home">
   <div id="toasts" aria-live="polite"></div>
@@ -47,6 +47,7 @@
 
     <section id="result" class="panel" hidden></section>
   </main>
-  <script type="module" src="/static/js/home.js"></script>
+  {% for u in preload_modules('js/home.js') %}<link rel="modulepreload" href="{{ u }}">{% endfor %}
+  <script type="module" src="{{ asset('js/home.js') }}"></script>
 </body>
 </html>

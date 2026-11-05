@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import json
 import logging
 import random
 import threading
@@ -20,7 +21,7 @@ from .engine import AuctionError
 from .models import AuctionState, Room
 from .images import ImageStore
 from .roster import RosterStore
-from .storage import RoomStore
+from .storage import RoomStore, WriteBehind
 
 log = logging.getLogger("auction.manager")
 
@@ -58,6 +59,7 @@ class RoomManager:
         max_rooms: int = config.MAX_ROOMS,
         images: Optional[ImageStore] = None,
         roster: Optional[RosterStore] = None,
+        async_save: bool = False,
     ):
         self.store = store
         self.images = images or ImageStore(store.root)       # 선수 이미지 (방과 무관하게 영구 보관)
@@ -68,6 +70,7 @@ class RoomManager:
         self.max_rooms = max_rooms
         self._rooms: dict[str, RoomHandle] = {}
         self._lock = threading.Lock()
+        self._writer = WriteBehind(store) if async_save else None
 
     # ------------------------------------------------------------------ 로드/생성/삭제
     def load_from_disk(self) -> int:
@@ -116,6 +119,8 @@ class RoomManager:
     def delete_room(self, room_id: str) -> None:
         with self._lock:
             self._rooms.pop(room_id, None)
+        if self._writer is not None:
+            self._writer.discard(room_id)
         self.store.delete(room_id)
         log.info("방 삭제: %s", room_id)
         # 방 데이터만 지운다. 선수 명부와 거기에 연결된 이미지는 영구 보관이므로 남는다.
@@ -248,9 +253,18 @@ class RoomManager:
         room = handle.room
         engine.sync_remaining(room, self.clock())
         try:
-            self.store.save(room.id, room.to_dict())
+            if self._writer is not None:
+                # 락 안에서는 직렬화만 하고, 디스크 쓰기(fsync)는 별도 스레드가 묶어서 처리한다.
+                self._writer.submit(room.id, json.dumps(room.to_dict(), ensure_ascii=False, separators=(",", ":")))
+            else:
+                self.store.save(room.id, room.to_dict())
         except OSError:
             log.exception("방 저장 실패: %s", room.id)
+
+    def flush(self) -> None:
+        """대기 중인 저장을 모두 디스크에 쓴다 (종료 직전에 호출)."""
+        if self._writer is not None:
+            self._writer.flush()
 
     def add_chat(self, handle: RoomHandle, entry: dict[str, Any]) -> None:
         with handle.lock:

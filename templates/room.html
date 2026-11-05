@@ -7,7 +7,7 @@
   <meta name="robots" content="noindex, nofollow">
   <title>선수 경매</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="{{ asset('css/style.css') }}">
 </head>
 <body class="page-room">
   <div id="toasts" aria-live="polite"></div>
@@ -28,7 +28,8 @@
       <div id="chat" class="panel"></div>
     </aside>
   </main>
-  <script src="/static/vendor/socket.io.min.js"></script>
-  <script type="module" src="/static/js/room.js"></script>
+  <script src="{{ asset('vendor/socket.io.min.js') }}"></script>
+  {% for u in preload_modules('js/room.js') %}<link rel="modulepreload" href="{{ u }}">{% endfor %}
+  <script type="module" src="{{ asset('js/room.js') }}"></script>
 </body>
 </html>
