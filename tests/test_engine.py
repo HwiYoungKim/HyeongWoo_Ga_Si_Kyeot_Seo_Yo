@@ -79,7 +79,7 @@ def test_five_step_validation():
 
 
 def test_roster_full_team_cannot_bid():
-    s = Settings(base_points=1000, base_bid_time_sec=10, extension_time_sec=0)
+    s = Settings(base_points=1000, base_bid_time_sec=10, extension_time_sec=0, timer_mode="EXTEND")
     room, rng = make_room(3, 2, settings=s, start=True)   # 팀당 매물 1명
     seq = room.lot_seq
     engine.place_bid(room, 0, 10, seq, 1.0)
@@ -156,8 +156,47 @@ def test_reserve_per_slot_limits_max_bid():
 
 # --------------------------------------------------------------------------- 타이머
 
+def random_rng():
+    import random
+    return random.Random(5)
+
+
+def test_default_timer_is_15s_reset_mode():
+    s = Settings()
+    assert s.base_bid_time_sec == 15 and s.timer_mode == "RESET"
+    room, _ = make_room(3, 3, settings=s, start=True)
+    assert room.remaining == 15.0 and room.deadline == 15.0          # 매물 시작: 15초
+
+
+def test_reset_mode_restores_to_base_on_every_higher_bid():
+    s = Settings(base_bid_time_sec=15, timer_mode="RESET", extension_time_sec=3)   # 연장 값은 무시된다
+    room, _ = make_room(3, 3, settings=s, start=True)
+    seq = room.lot_seq
+    engine.place_bid(room, 0, 10, seq, 2.0)               # 남은 13초여도 15초로 다시 채워진다
+    assert room.deadline == 17.0 and room.remaining == 15.0
+    engine.place_bid(room, 1, 20, seq, 16.5)              # 남은 0.5초 -> 15초
+    assert room.deadline == 31.5
+    engine.place_bid(room, 0, 30, seq, 31.0)
+    assert room.deadline == 46.0
+    assert engine.tick(room, 45.9, random_rng()) is False  # 아직 남아 있다
+    assert engine.tick(room, 46.0, random_rng()) is True   # 15초 동안 입찰이 없으면 낙찰
+
+
+def test_rejected_bid_does_not_reset_timer():
+    s = Settings(base_bid_time_sec=15, timer_mode="RESET")
+    room, _ = make_room(3, 3, settings=s, start=True)
+    seq = room.lot_seq
+    engine.place_bid(room, 0, 50, seq, 1.0)
+    before = room.deadline
+    with pytest.raises(engine.AuctionError):
+        engine.place_bid(room, 1, 50, seq, 10.0)           # 같은 금액은 거부 -> 시간 초기화 없음
+    with pytest.raises(engine.AuctionError):
+        engine.place_bid(room, 0, 90, seq, 10.0)           # 최고 입찰자 연속 입찰 거부
+    assert room.deadline == before
+
+
 def test_extension_restores_time_only_when_below_extension():
-    s = Settings(base_bid_time_sec=30, extension_time_sec=10)
+    s = Settings(base_bid_time_sec=30, extension_time_sec=10, timer_mode="EXTEND")
     room, _ = make_room(3, 3, settings=s, start=True)
     seq = room.lot_seq
     engine.place_bid(room, 0, 10, seq, 5.0)               # 남은 25초 > 10 -> 그대로
@@ -169,7 +208,7 @@ def test_extension_restores_time_only_when_below_extension():
 
 
 def test_zero_extension_is_reflex_mode():
-    s = Settings(base_bid_time_sec=10, extension_time_sec=0)
+    s = Settings(base_bid_time_sec=10, extension_time_sec=0, timer_mode="EXTEND")
     room, _ = make_room(3, 3, settings=s, start=True)
     engine.place_bid(room, 0, 10, room.lot_seq, 9.0)
     assert room.deadline == 10.0
@@ -183,7 +222,7 @@ def test_tick_before_deadline_changes_nothing():
 
 
 def test_sold_deducts_points_and_fills_roster():
-    s = Settings(base_points=500, base_bid_time_sec=10, extension_time_sec=0)
+    s = Settings(base_points=500, base_bid_time_sec=10, extension_time_sec=0, timer_mode="EXTEND")
     room, rng = make_room(3, 3, settings=s, start=True)
     lot = room.current_lot
     engine.place_bid(room, 2, 120, room.lot_seq, 1.0)
@@ -197,7 +236,7 @@ def test_sold_deducts_points_and_fills_roster():
 
 
 def test_pause_freezes_timer_and_blocks_bids():
-    s = Settings(base_bid_time_sec=30, extension_time_sec=0)
+    s = Settings(base_bid_time_sec=30, extension_time_sec=0, timer_mode="EXTEND")
     room, rng = make_room(3, 3, settings=s, start=True)
     engine.pause(room, 12.0)
     assert room.paused and room.remaining == pytest.approx(18.0)
@@ -239,7 +278,7 @@ def test_unsold_goes_to_queue_then_reauction_then_auto_assign():
 
 
 def test_reauction_allows_selling_unsold_players():
-    s = Settings(base_bid_time_sec=10, extension_time_sec=0)
+    s = Settings(base_bid_time_sec=10, extension_time_sec=0, timer_mode="EXTEND")
     room, rng = make_room(2, 2, settings=s, start=True)   # 매물 2, 팀당 1
     t = 100.0
     engine.tick(room, t, rng)                             # 첫 매물 유찰
@@ -257,7 +296,7 @@ def test_reauction_allows_selling_unsold_players():
 
 
 def test_single_open_team_gets_remaining_players_for_zero():
-    s = Settings(base_bid_time_sec=10, extension_time_sec=0)
+    s = Settings(base_bid_time_sec=10, extension_time_sec=0, timer_mode="EXTEND")
     room, rng = make_room(3, 3, settings=s, start=True)   # 팀당 2칸
     t = 0.0
     # 팀1이 두 명을, 팀2가 두 명을 낙찰 -> 빈자리 있는 팀은 팀0 하나
@@ -389,6 +428,7 @@ def test_random_simulation_keeps_invariants(seed):
         reserve_per_slot=r.choice([0, 0, 10]),
         base_bid_time_sec=10,
         extension_time_sec=r.choice([0, 3, 10]),
+        timer_mode=r.choice(["RESET", "EXTEND"]),
     )
     handicaps = [r.randint(-100, 300) for _ in range(n)]
     room, rng = make_room(n, m, settings=s, seed=seed, start=True, handicaps=handicaps)

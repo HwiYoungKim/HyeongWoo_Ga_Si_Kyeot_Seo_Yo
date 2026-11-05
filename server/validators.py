@@ -120,6 +120,10 @@ def parse_settings_patch(patch: Any) -> dict[str, Any]:
             out[key] = clean_int(value, *config.RESERVE_RANGE, field="빈자리당 유보 포인트")
         elif key == "base_bid_time_sec":
             out[key] = clean_int(value, *config.BASE_TIME_RANGE, field="기본 입찰 시간")
+        elif key == "timer_mode":
+            if value not in ("RESET", "EXTEND"):
+                raise ValidationError("타이머 방식은 RESET 또는 EXTEND 여야 합니다.")
+            out[key] = value
         elif key == "extension_time_sec":
             out[key] = clean_int(value, *config.EXTENSION_RANGE, field="연장 시간")
         elif key == "order_public":

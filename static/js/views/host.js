@@ -38,6 +38,7 @@ export function mountHost(root, ctx) {
   };
 
   f.bid_mode = h('select', {}, h('option', { value: 'FIXED', text: '고정 금액 단위' }), h('option', { value: 'RATIO', text: '비율(%) 단위' }));
+  f.timer_mode = h('select', {}, h('option', { value: 'RESET', text: '입찰마다 기본 시간으로 초기화' }), h('option', { value: 'EXTEND', text: '입찰 시 연장 시간만큼 회복(기존)' }));
   f.order_public = h('select', {}, h('option', { value: 'false', text: '비공개 (BLIND)' }), h('option', { value: 'true', text: '공개 (PUBLIC)' }));
   const fixedField = numField('fixed_min_increment', '최소 입찰 단위(P)', 1, 100000);
   const ratioField = numField('ratio_percent', '최소 입찰 비율(%)', 1, 100, '현재가의 N% 이상 (올림)');
@@ -47,6 +48,10 @@ export function mountHost(root, ctx) {
   };
   f.bid_mode.addEventListener('change', modeSync);
 
+  const extField = numField('extension_time_sec', '입찰 시 연장 시간(초)', 0, 120, '연장 방식에서만 사용. 0이면 연장 없음(순발력 모드)');
+  const timerSync = () => { extField.hidden = f.timer_mode.value !== 'EXTEND'; };
+  f.timer_mode.addEventListener('change', timerSync);
+
   const settingsForm = h('div', { class: 'form-grid' },
     numField('members_per_team', '팀당 인원 (팀장 포함)', 2, 10),
     numField('base_points', '팀장 기본 포인트', 0, 1000000),
@@ -54,7 +59,9 @@ export function mountHost(root, ctx) {
     fixedField, ratioField,
     numField('min_first_bid', '첫 입찰 최소 금액(P)', 0, 1000000),
     numField('base_bid_time_sec', '기본 입찰 시간(초)', 3, 120),
-    numField('extension_time_sec', '입찰 시 연장 시간(초)', 0, 120, '0이면 연장 없음(순발력 모드)'),
+    h('label', { class: 'field' }, h('span', { text: '타이머 방식' }), f.timer_mode,
+      h('small', { class: 'sub', text: '초기화: 새 입찰이 들어오면 남은 시간이 다시 기본 입찰 시간이 됩니다.' })),
+    extField,
     numField('reserve_per_slot', '빈자리당 유보 포인트', 0, 100000, '0이면 사용 안 함. 정원을 못 채우는 상황 방지용'),
     h('label', { class: 'field' }, h('span', { text: '경매 순서' }), f.order_public),
   );
@@ -203,6 +210,7 @@ export function mountHost(root, ctx) {
         ratio_min_increment: int(f.ratio_percent) / 100,
         min_first_bid: int(f.min_first_bid),
         base_bid_time_sec: int(f.base_bid_time_sec),
+        timer_mode: f.timer_mode.value,
         extension_time_sec: int(f.extension_time_sec),
         reserve_per_slot: int(f.reserve_per_slot),
         order_public: f.order_public.value === 'true',
@@ -227,6 +235,8 @@ export function mountHost(root, ctx) {
     f.reserve_per_slot.value = s.reserve_per_slot;
     f.order_public.value = String(s.order_public);
     modeSync();
+    f.timer_mode.value = s.timer_mode;
+    timerSync();
     if (teamRows.length !== state.teams.length) buildTeamRows(state.teams.length);
     state.teams.forEach((t, i) => {
       teamRows[i].name.value = t.leader_name;

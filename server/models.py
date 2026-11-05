@@ -39,8 +39,9 @@ class Settings:
     ratio_min_increment: float = 0.10     # 0.10 = 10%
     min_first_bid: int = 0                # 첫 입찰 최소 금액 (의사코드 기본값은 0P)
     reserve_per_slot: int = 0             # 남은 빈자리 1칸당 남겨둬야 하는 최소 포인트 (0이면 비활성)
-    base_bid_time_sec: int = 30
-    extension_time_sec: int = 10          # 0이면 순발력 모드 (연장 없음)
+    base_bid_time_sec: int = 15           # 매물마다 처음 주어지는 입찰 시간(초)
+    timer_mode: str = "RESET"             # RESET: 입찰 때마다 base_bid_time_sec 로 초기화 / EXTEND: 아래 연장 방식
+    extension_time_sec: int = 10          # EXTEND 모드에서 입찰 시 회복할 시간. 0이면 순발력 모드 (연장 없음)
     order_public: bool = False            # True=PUBLIC(순서 공개) / False=BLIND
 
     def to_dict(self) -> dict[str, Any]:

@@ -313,12 +313,20 @@ def place_bid(room: Room, team_id: int, amount: Any, lot_seq: Any, now: float) -
     if len(room.bid_history) > config.BID_HISTORY:
         del room.bid_history[: len(room.bid_history) - config.BID_HISTORY]
 
-    ext = room.settings.extension_time_sec
-    if ext > 0 and room.deadline is not None:
-        left = max(0.0, room.deadline - now)
-        if left < ext:                                # 남은 시간이 연장 시간보다 짧을 때만 회복
-            room.deadline = now + ext
-            room.remaining = float(ext)
+    if room.deadline is not None:
+        if room.settings.timer_mode == "RESET":
+            # 더 높은 입찰이 승인될 때마다 남은 시간을 기본 입찰 시간으로 되돌린다 (줄어들 일은 없다:
+            # 기본 시간은 매물 시작 때의 최대치이므로 항상 그 이하에서 다시 채워진다).
+            base = float(room.settings.base_bid_time_sec)
+            room.deadline = now + base
+            room.remaining = base
+        else:
+            ext = room.settings.extension_time_sec
+            if ext > 0:
+                left = max(0.0, room.deadline - now)
+                if left < ext:                        # 남은 시간이 연장 시간보다 짧을 때만 회복
+                    room.deadline = now + ext
+                    room.remaining = float(ext)
     _touch(room)
 
 
