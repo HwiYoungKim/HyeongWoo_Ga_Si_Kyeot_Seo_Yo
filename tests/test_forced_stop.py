@@ -123,3 +123,62 @@ def test_unsold_list_tracks_retry_round_and_leftover(env):
     assert host.emit("host_force_unsold", {}, callback=True)["ok"]   # 재경매에서도 유찰
     lst = snap(obs)["queue"]["unsold_players"]
     assert any(p["name"] == cur and p["round"] == "leftover" for p in lst)
+
+
+# --- 0P 입찰/낙찰 방지, 링크 기본 주소 -------------------------------------------------
+
+import pytest  # noqa: E402
+
+from server.engine import AuctionError  # noqa: E402
+from server.models import Room  # noqa: E402
+from server.validators import ValidationError, parse_settings_patch  # noqa: E402
+
+
+def test_default_settings_do_not_allow_zero_point_bid():
+    room, r = make_room(3, 3, start=True)
+    assert Settings().min_first_bid == 1
+    assert engine.min_next_bid(room) >= 1
+    for bad in (0, -1):
+        with pytest.raises(AuctionError) as e:
+            engine.place_bid(room, 0, bad, room.lot_seq, 0.0, r)
+        assert e.value.code == "bid_too_low"
+    assert room.highest_team == -1            # 0P 입찰로 최고 입찰자가 생기지 않는다
+
+
+def test_old_room_with_zero_min_bid_is_still_positive():
+    s = Settings(min_first_bid=0)             # 예전에 저장된 방
+    room, r = make_room(3, 3, settings=s, start=True)
+    assert engine.min_next_bid(room) == 1
+    with pytest.raises(AuctionError):
+        engine.place_bid(room, 0, 0, room.lot_seq, 0.0, r)
+    restored = Room.from_dict(room.to_dict())
+    assert engine.min_next_bid(restored) == 1
+
+
+def test_settings_validator_rejects_non_positive_min_bid():
+    for bad in (0, -5, 1.5, "abc", None, True):
+        with pytest.raises(ValidationError):
+            parse_settings_patch({"min_first_bid": bad})
+    assert parse_settings_patch({"min_first_bid": 1}) == {"min_first_bid": 1}
+
+
+def test_only_unclaimed_players_are_assigned_at_zero_points(env):
+    """0P 는 '자동 배정'에서만 생긴다. 경매에서 0P 로 낙찰되는 일은 없다."""
+    room, r = make_room(3, 3, start=True)
+    for team in range(3):
+        if room.state != AuctionState.MAIN_AUCTION:
+            break
+        engine.place_bid(room, team, engine.min_next_bid(room), room.lot_seq, 0.0, r)
+        engine.force_sold(room, 0.0, r)
+    auctioned = [e for e in room.activity if e["type"] == "sold"]
+    assert auctioned and all(e["amount"] >= 1 for e in auctioned)
+
+
+def test_server_info_exposes_share_url(env, tmp_path):
+    assert env.http.get("/api/server-info").get_json()["share_url"] is None
+    from server.app_config import AppConfig
+    from server.app_factory import create_app
+    cfg = AppConfig(data_dir=str(tmp_path / "d2"), admin_key="adminkey-for-tests",
+                    public_url="https://abc.trycloudflare.com/", secure=True)
+    info = create_app(cfg).flask.test_client().get("/api/server-info").get_json()
+    assert info["share_url"] == "https://abc.trycloudflare.com"

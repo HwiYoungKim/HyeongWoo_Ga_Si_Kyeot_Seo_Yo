@@ -1,5 +1,6 @@
 // 홈: 방 만들기. 만들어진 접속 링크는 이 화면에서 "한 번만" 보여준다.
 import { h, replace, toast, copyText, $ } from './lib/dom.js';
+import { isLoopbackUrl, defaultShareBase, LOOPBACK_WARNING } from './lib/net.js';
 
 const form = $('#create-form');
 const resultBox = $('#result');
@@ -7,6 +8,10 @@ const keyInput = $('#admin-key');
 const baseInput = $('#base-url');
 const baseList = $('#base-urls');
 const secureNote = $('#secure-note');
+const loopbackNote = h('p', { class: 'warn-box', text: LOOPBACK_WARNING, hidden: true });
+secureNote.before(loopbackNote);
+function updateLoopbackNote() { loopbackNote.hidden = !isLoopbackUrl(baseInput.value); }
+baseInput.addEventListener('input', updateLoopbackNote);
 
 // 서버 콘솔이 열어 준 주소(#admin=키)로 들어오면 키를 채우고 주소창에서 즉시 지운다.
 const hashParams = new URLSearchParams(location.hash.slice(1));
@@ -16,10 +21,12 @@ if (hashParams.get('admin')) {
 }
 
 baseInput.value = location.origin;
+updateLoopbackNote();
 fetch('/api/server-info').then((r) => r.json()).then((info) => {
   if (!info.ok) return;
   for (const u of info.urls) baseList.appendChild(h('option', { value: u.url, label: u.label }));
-  if (info.lan_enabled && info.urls.length) baseInput.value = info.urls[0].url;
+  baseInput.value = defaultShareBase(info);
+  updateLoopbackNote();
   if (!info.secure && info.lan_enabled) {
     secureNote.hidden = false;
   }
@@ -54,6 +61,7 @@ function renderResult() {
   replace(resultBox,
     h('h2', { text: '방이 만들어졌습니다' }),
     h('p', { class: 'warn-box', text: '아래 링크는 이 화면에서만 볼 수 있습니다. 링크를 가진 사람은 누구나 해당 역할로 접속할 수 있으니 필요한 사람에게만 따로 전달하세요. (팀장 링크는 팀장마다 다릅니다.)' }),
+    isLoopbackUrl(origin()) ? h('p', { class: 'warn-box', text: LOOPBACK_WARNING }) : null,
     h('div', { class: 'link-list' }, list.map((r) => h('div', { class: 'link-row' },
       h('strong', { text: r.label }),
       h('input', { type: 'text', readOnly: true, value: r.link, onFocus: (e) => e.target.select() }),

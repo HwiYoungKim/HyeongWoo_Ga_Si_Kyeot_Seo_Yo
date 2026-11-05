@@ -21,6 +21,7 @@ python app.py                        # 내 PC에서만 접속 (127.0.0.1:5000)
 | 같은 와이파이/공유기의 다른 사람도 접속 | `python app.py --lan` (윈도우 방화벽 허용 창이 뜨면 "개인 네트워크" 허용) |
 | 포트가 이미 사용 중 (macOS는 5000을 AirPlay가 쓰는 경우가 있음) | `python app.py --port 5055` |
 | **다른 와이파이/LTE 사람도 접속 (추천)** | `python app.py --tunnel` — `cloudflared`(Cloudflare Tunnel)를 자동으로 켜고 공개 주소를 만들어 보여줍니다. 시작 후 접속 자가 점검 결과(`[확인]`/`[경고]`)가 출력됩니다. 터널은 `localhost`가 아닌 `127.0.0.1` 로 연결합니다 (윈도우에서 `localhost` 가 IPv6 로 풀려 연결이 안 되는 문제 방지) |
+| 링크 주소 | 방을 만들 때 나오는 링크는 `--tunnel`/`--public-url` 주소로 자동 생성됩니다. `127.0.0.1`·`localhost` 로 만든 링크는 **다른 사람이 열 수 없어** 화면에 경고가 표시됩니다 |
 | 터널을 직접 켠 경우 | `python app.py --public-url https://xxxx.trycloudflare.com --trust-proxy` (터널은 `cloudflared tunnel --url http://127.0.0.1:5000`) |
 | HTTPS 직접 사용 | `python app.py --cert cert.pem --key key.pem` |
 | 관리자 키를 고정 | `python app.py --admin-key "내가정한키"` 또는 환경변수 `AUCTION_ADMIN_KEY` |
@@ -85,6 +86,7 @@ python app.py --backup-dir ~/GoogleDrive/auction-backup     # 예: macOS/Linux
 | 매물 순서 | 시작 시 Fisher-Yates 셔플. `PUBLIC`이면 순서(이름·포지션만) 공개, `BLIND`면 인원수만 공개 |
 | 입찰 검증 (서버) | ① 경매 진행 중·일시정지 아님 ② 팀 정원에 빈자리 ③ 내가 최고 입찰자가 아님 ④ 최소 입찰 단위 이상 ⑤ 보유 포인트(−유보금) 이하 |
 | 입찰 단위 | 고정 금액(+N P) 또는 비율(현재가의 N% 이상, 올림, 최소 +1) |
+| 최소 입찰 | 첫 입찰 최소 금액은 **1P 이상의 정수**(기본 1P). 0P 입찰·낙찰은 불가능합니다. 0P 는 아무도 낙찰받지 못한 선수를 빈자리에 **자동 배정**할 때만 생깁니다 |
 | 타이머 | 기본 시간 3–120초(기본값 **15초**). 방식 선택: **초기화(RESET, 기본)** 더 높은 입찰이 승인될 때마다 남은 시간을 기본 시간(15초)으로 되돌림 / **연장(EXTEND)** 남은 시간이 연장 시간보다 짧을 때만 연장 시간으로 회복, 연장 0초 = 순발력 모드 |
 | 낙찰/유찰 | 시간 종료 시 최고 입찰자에게 낙찰(포인트 차감), 입찰 없으면 유찰 큐 뒤로 |
 | 재경매 | 정규 큐 소진 후 유찰자만 다시 경매 1회. 그래도 남으면 빈자리에 **0P 무작위 자동 배정** |

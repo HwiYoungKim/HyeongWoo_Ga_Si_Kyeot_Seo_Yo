@@ -5,6 +5,7 @@ import { fmt } from '../lib/format.js';
 import { isRunning } from './common.js';
 import { createPlayerRow } from './player_form.js';
 import { loadMeta, heroName } from '../lib/meta.js';
+import { isLoopbackUrl, defaultShareBase, LOOPBACK_WARNING } from '../lib/net.js';
 import { roleIcon } from './profile.js';
 
 export function mountHost(root, ctx) {
@@ -57,7 +58,7 @@ export function mountHost(root, ctx) {
     numField('base_points', '팀장 기본 포인트', 0, 1000000),
     h('label', { class: 'field' }, h('span', { text: '입찰 단위 방식' }), f.bid_mode),
     fixedField, ratioField,
-    numField('min_first_bid', '첫 입찰 최소 금액(P)', 0, 1000000),
+    numField('min_first_bid', '첫 입찰 최소 금액(P)', 1, 1000000, '1P 이상의 정수. 0P 입찰은 불가'),
     numField('base_bid_time_sec', '기본 입찰 시간(초)', 3, 120),
     h('label', { class: 'field' }, h('span', { text: '타이머 방식' }), f.timer_mode,
       h('small', { class: 'sub', text: '초기화: 새 입찰이 들어오면 남은 시간이 다시 기본 입찰 시간이 됩니다.' })),
@@ -266,19 +267,25 @@ export function mountHost(root, ctx) {
   const baseInput = h('input', { type: 'text', list: 'base-urls', placeholder: 'https://… 또는 http://192.168.0.x:5000' });
   const baseList = h('datalist', { id: 'base-urls' });
   baseInput.value = location.origin;
+  const loopbackNote = h('p', { class: 'warn-box', text: LOOPBACK_WARNING, hidden: true });
+  const updateLoopbackNote = () => { loopbackNote.hidden = !isLoopbackUrl(baseInput.value || location.origin); };
+  baseInput.addEventListener('input', updateLoopbackNote);
+  updateLoopbackNote();
   const issuedBox = h('div', { class: 'issued' });
   const reissueRow = h('div', { class: 'row wrap' });
   const linksBox = h('details', { class: 'panel-sub' },
     h('summary', { text: '참가자 링크 재발급' }),
     h('p', { class: 'sub', text: '링크는 방을 만들 때 한 번만 표시됩니다. 분실하거나 유출됐다면 재발급하세요. 이전 링크는 즉시 무효가 되고 접속 중이던 사람은 끊깁니다.' }),
     h('label', { class: 'field' }, h('span', { text: '링크에 쓸 서버 주소' }), baseInput, baseList),
+    loopbackNote,
     reissueRow,
     issuedBox,
   );
   loadMeta().then((info) => {
     if (!info) return;
     for (const u of info.urls) baseList.appendChild(h('option', { value: u.url, label: u.label }));
-    if (info.urls.length && info.lan_enabled) baseInput.value = info.urls[0].url;
+    baseInput.value = defaultShareBase(info);
+    updateLoopbackNote();
   });
 
   function buildLink(token) {

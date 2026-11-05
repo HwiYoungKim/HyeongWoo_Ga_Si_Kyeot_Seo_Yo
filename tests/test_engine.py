@@ -59,7 +59,7 @@ def test_bid_rejected_before_start():
 
 
 def test_five_step_validation():
-    s = Settings(base_points=100, fixed_min_increment=10, min_first_bid=0)
+    s = Settings(base_points=100, fixed_min_increment=10, min_first_bid=1)
     room, rng = make_room(3, 3, settings=s, start=True)
     seq = room.lot_seq
 
@@ -108,7 +108,7 @@ def test_non_integer_lot_seq_rejected(bad):
     assert err_code(engine.place_bid, room, 0, 10, bad, 1.0) == "stale_lot"
 
 
-def test_negative_amount_rejected_even_when_min_first_bid_zero():
+def test_negative_amount_rejected():
     room, _ = make_room(3, 3, start=True)
     assert err_code(engine.place_bid, room, 0, -5, room.lot_seq, 1.0) == "bid_too_low"
 
@@ -126,11 +126,11 @@ def test_unknown_team_rejected():
 
 
 def test_ratio_increment_uses_ceil_and_minimum_one():
-    s = Settings(bid_mode=BidMode.RATIO.value, ratio_min_increment=0.10, min_first_bid=0)
+    s = Settings(bid_mode=BidMode.RATIO.value, ratio_min_increment=0.10, min_first_bid=1)
     room, _ = make_room(3, 3, settings=s, start=True)
     seq = room.lot_seq
-    engine.place_bid(room, 0, 0, seq, 1.0)
-    assert engine.min_next_bid(room) == 1             # 0의 10%는 0 -> 최소 1
+    engine.place_bid(room, 0, 1, seq, 1.0)
+    assert engine.min_next_bid(room) == 2             # 1의 10%는 0.1 -> 올림해 최소 +1
     engine.place_bid(room, 1, 15, seq, 1.0)
     assert engine.min_next_bid(room) == 17            # 15 * 10% = 1.5 -> 올림 2
     engine.place_bid(room, 2, 100, seq, 1.0)

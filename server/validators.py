@@ -115,7 +115,7 @@ def parse_settings_patch(patch: Any) -> dict[str, Any]:
         elif key == "ratio_min_increment":
             out[key] = clean_float(value, *config.RATIO_INCREMENT_RANGE, field="비율 입찰 단위")
         elif key == "min_first_bid":
-            out[key] = clean_int(value, *config.POINTS_RANGE, field="첫 입찰 최소 금액")
+            out[key] = clean_int(value, *config.MIN_BID_RANGE, field="첫 입찰 최소 금액")
         elif key == "reserve_per_slot":
             out[key] = clean_int(value, *config.RESERVE_RANGE, field="빈자리당 유보 포인트")
         elif key == "base_bid_time_sec":

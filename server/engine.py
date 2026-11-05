@@ -96,7 +96,7 @@ def nobody_can_outbid(room: Room) -> bool:
 def min_next_bid(room: Room) -> int:
     """현재 매물에 대해 다음 입찰이 최소한 넘어야 하는 금액."""
     if room.highest_team == -1:
-        return room.settings.min_first_bid
+        return max(1, room.settings.min_first_bid)
     s = room.settings
     if s.bid_mode == BidMode.RATIO.value:
         delta = max(1, math.ceil(room.highest_bid * s.ratio_min_increment))

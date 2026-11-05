@@ -120,6 +120,7 @@ def register_routes(app: Flask, manager: RoomManager, cfg: AppConfig, admin_fail
         return jsonify({
             "ok": True,
             "urls": urls,
+            "share_url": cfg.public_url.rstrip("/") if cfg.public_url else None,
             "lan_enabled": cfg.lan_enabled,
             "secure": cfg.secure,
             "heroes": heroes.hero_list_for_client(),

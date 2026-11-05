@@ -30,6 +30,7 @@ BID_HISTORY = 15
 BASE_TIME_RANGE = (3, 120)        # 기본 입찰 시간(초)
 EXTENSION_RANGE = (0, 120)        # 입찰 시 연장 시간(초), 0이면 순발력 모드
 POINTS_RANGE = (0, 1_000_000)
+MIN_BID_RANGE = (1, 1_000_000)     # 첫 입찰 최소 금액: 양의 정수 (0P 낙찰 방지)
 HANDICAP_RANGE = (-1_000_000, 1_000_000)
 FIXED_INCREMENT_RANGE = (1, 100_000)
 RATIO_INCREMENT_RANGE = (0.01, 1.0)

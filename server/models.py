@@ -37,7 +37,7 @@ class Settings:
     bid_mode: str = BidMode.FIXED.value
     fixed_min_increment: int = 10
     ratio_min_increment: float = 0.10     # 0.10 = 10%
-    min_first_bid: int = 0                # 첫 입찰 최소 금액 (의사코드 기본값은 0P)
+    min_first_bid: int = 1                # 첫 입찰 최소 금액 (양의 정수. 0P 입찰/낙찰은 불가)
     reserve_per_slot: int = 0             # 남은 빈자리 1칸당 남겨둬야 하는 최소 포인트 (0이면 비활성)
     base_bid_time_sec: int = 15           # 매물마다 처음 주어지는 입찰 시간(초)
     timer_mode: str = "RESET"             # RESET: 입찰 때마다 base_bid_time_sec 로 초기화 / EXTEND: 아래 연장 방식
