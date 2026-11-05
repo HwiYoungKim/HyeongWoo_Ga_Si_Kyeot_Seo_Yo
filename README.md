@@ -20,7 +20,8 @@ python app.py                        # 내 PC에서만 접속 (127.0.0.1:5000)
 |---|---|
 | 같은 와이파이/공유기의 다른 사람도 접속 | `python app.py --lan` (윈도우 방화벽 허용 창이 뜨면 "개인 네트워크" 허용) |
 | 포트가 이미 사용 중 (macOS는 5000을 AirPlay가 쓰는 경우가 있음) | `python app.py --port 5055` |
-| 터널(Cloudflare Tunnel 등)로 외부 공개 | `python app.py --public-url https://xxxx.trycloudflare.com --trust-proxy` |
+| **다른 와이파이/LTE 사람도 접속 (추천)** | `python app.py --tunnel` — `cloudflared`(Cloudflare Tunnel)를 자동으로 켜고 공개 주소를 만들어 보여줍니다. 시작 후 접속 자가 점검 결과(`[확인]`/`[경고]`)가 출력됩니다. 터널은 `localhost`가 아닌 `127.0.0.1` 로 연결합니다 (윈도우에서 `localhost` 가 IPv6 로 풀려 연결이 안 되는 문제 방지) |
+| 터널을 직접 켠 경우 | `python app.py --public-url https://xxxx.trycloudflare.com --trust-proxy` (터널은 `cloudflared tunnel --url http://127.0.0.1:5000`) |
 | HTTPS 직접 사용 | `python app.py --cert cert.pem --key key.pem` |
 | 관리자 키를 고정 | `python app.py --admin-key "내가정한키"` 또는 환경변수 `AUCTION_ADMIN_KEY` |
 
@@ -88,6 +89,9 @@ python app.py --backup-dir ~/GoogleDrive/auction-backup     # 예: macOS/Linux
 | 낙찰/유찰 | 시간 종료 시 최고 입찰자에게 낙찰(포인트 차감), 입찰 없으면 유찰 큐 뒤로 |
 | 재경매 | 정규 큐 소진 후 유찰자만 다시 경매 1회. 그래도 남으면 빈자리에 **0P 무작위 자동 배정** |
 | 자동 배정 | 빈자리가 있는 팀이 1팀뿐이면 남은 매물을 즉시 0P 배정 (교착 방지) |
+| **포인트 소진 강제 정지** | 정규 경매·재경매 모두, 빈자리가 있는 **모든 팀장이 최소 입찰가를 낼 수 없게 되면** 경매를 멈추고 남은 선수를 0P로 자동 배정합니다. 매물이 바뀔 때마다 검사합니다 |
+| 즉시 낙찰 | 입찰 직후 **나머지 팀 중 그 금액을 넘길 수 있는 팀이 없으면** 타이머를 기다리지 않고 바로 낙찰합니다 |
+| 유찰자 목록 | 대기열 카드에 유찰된 선수 명단(이름·포지션)이 주최자·팀장·관전자 모두에게 표시됩니다. `재경매 대기` / `재경매 유찰` 구분 |
 | 대진 | 잔여 포인트 내림차순(동률은 무작위)으로 상대 지명. 홀수 팀이면 마지막 팀 부전승 |
 | 핸디캡 | 팀장별 시작 포인트 가감 |
 | 유보금(선택) | 빈자리 1칸당 남겨둘 최소 포인트. 포인트를 다 써서 정원을 못 채우는 상황을 방지 |

@@ -263,7 +263,7 @@ class SocketApi:
         assert team_id is not None
         return self._run(
             sess,
-            lambda room, now, rng: engine.place_bid(room, team_id, data.get("amount"), data.get("lot_seq"), now),
+            lambda room, now, rng: engine.place_bid(room, team_id, data.get("amount"), data.get("lot_seq"), now, rng),
         )
 
     def _pick_opponent(self, sess: Session, data: dict[str, Any]) -> dict[str, Any]:

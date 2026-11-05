@@ -65,6 +65,34 @@ def max_bid_for(room: Room, team: Team) -> int:
     return max(0, team.points - reserve)
 
 
+def _bid_floor(room: Room) -> int:
+    """새 매물에 낼 수 있는 가장 낮은 의미 있는 입찰액 (0P 입찰은 "입찰 불가"로 본다)."""
+    return max(1, room.settings.min_first_bid)
+
+
+def points_exhausted(room: Room) -> bool:
+    """빈자리가 남은 팀이 있는데, 그 팀들이 모두 더 이상 입찰할 포인트가 없는가.
+
+    이 상태에서는 경매를 계속해도 낙찰이 나올 수 없으므로 강제로 멈추고 남은 선수를 자동 배정한다.
+    """
+    open_teams = teams_with_open_slots(room)
+    if not open_teams:
+        return False
+    floor = _bid_floor(room)
+    return all(max_bid_for(room, t) < floor for t in open_teams)
+
+
+def nobody_can_outbid(room: Room) -> bool:
+    """현재 최고 입찰을 넘길 수 있는 팀이 하나도 없는가 (최고 입찰자 본인은 제외)."""
+    if room.highest_team == -1:
+        return False
+    need = min_next_bid(room)
+    for t in teams_with_open_slots(room):
+        if t.id != room.highest_team and max_bid_for(room, t) >= need:
+            return False
+    return True
+
+
 def min_next_bid(room: Room) -> int:
     """현재 매물에 대해 다음 입찰이 최소한 넘어야 하는 금액."""
     if room.highest_team == -1:
@@ -242,6 +270,11 @@ def _start_next_lot(room: Room, now: float, rng: Rng) -> None:
         if not open_teams:
             _enter_bracket(room, rng)
             return
+        if points_exhausted(room):
+            # 빈자리가 있는 모든 팀이 포인트를 소진했다 -> 경매 강제 종료, 남은 선수 자동 배정
+            _log(room, "forced_stop", reason="points_exhausted")
+            _auto_assign(room, rng, reason="points_exhausted")
+            return
         if len(open_teams) == 1:
             # 빈자리가 남은 팀이 하나뿐이면 경쟁이 불가능하므로 남은 매물을 즉시 0P 배정
             _auto_assign(room, rng, reason="last_team")
@@ -270,7 +303,8 @@ def _start_next_lot(room: Room, now: float, rng: Rng) -> None:
 # 입찰
 # =============================================================================
 
-def place_bid(room: Room, team_id: int, amount: Any, lot_seq: Any, now: float) -> None:
+def place_bid(room: Room, team_id: int, amount: Any, lot_seq: Any, now: float,
+              rng: "Rng | None" = None) -> None:
     """팀장의 입찰을 검증하고 반영한다. 규칙 위반이면 AuctionError.
 
     호출 측은 먼저 tick() 으로 만료된 매물을 정리해 두어야 한다 (manager 가 보장).
@@ -328,6 +362,10 @@ def place_bid(room: Room, team_id: int, amount: Any, lot_seq: Any, now: float) -
                     room.deadline = now + ext
                     room.remaining = float(ext)
     _touch(room)
+    # 이 입찰을 넘길 수 있는 팀이 없으면 남은 시간을 기다릴 이유가 없다 -> 즉시 낙찰 (강제 낙찰)
+    if rng is not None and nobody_can_outbid(room):
+        _log(room, "forced_sold", reason="no_challenger", team=room.highest_team)
+        _resolve_current_lot(room, now, rng)
 
 
 # =============================================================================

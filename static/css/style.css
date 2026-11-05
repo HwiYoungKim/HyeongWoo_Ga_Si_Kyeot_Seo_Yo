@@ -226,3 +226,8 @@ textarea { width: 100%; margin: .5rem 0; }
 .roster-item { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; padding: .3rem .4rem; border: 1px solid var(--line); border-radius: 6px; }
 .roster-item .sub { flex: 1 1 8rem; }
 .roster .role-icon-sm { margin-right: .1rem; }
+
+/* ---- 유찰자 목록 ---- */
+.unsold-list { list-style: none; padding: 0; margin: .3rem 0; font-size: .88rem; }
+.unsold-list li { display: flex; align-items: center; gap: .35rem; padding: .15rem 0; border-bottom: 1px solid var(--line); }
+.unsold-list .chip { margin-left: auto; }

@@ -5,7 +5,8 @@
 
   python app.py                  # 내 PC에서만 접속 가능 (127.0.0.1) — 가장 안전한 기본값
   python app.py --lan            # 같은 와이파이/공유기의 다른 사람도 접속 (0.0.0.0)
-  python app.py --public-url https://xxxx.trycloudflare.com   # 터널로 외부에 공개할 때 링크에 쓸 주소
+  python app.py --tunnel                 # 외부(다른 와이파이/LTE) 접속 허용: 터널을 자동으로 켬 (추천)
+  python app.py --public-url https://xxxx.trycloudflare.com   # 터널을 직접 켠 경우 링크에 쓸 주소
 
 관리 명령 (서버를 띄우지 않고 저장된 방을 관리하고 종료)
   python app.py --list-rooms             # 저장된 방 목록
@@ -49,6 +50,8 @@ def build_parser() -> argparse.ArgumentParser:
     net.add_argument("--port", type=int, default=5000, help="포트 (기본 5000)")
     net.add_argument("--public-url", default=None,
                      help="터널/도메인 등 외부 공개 주소. 초대 링크의 기본 주소로 쓰인다")
+    net.add_argument("--tunnel", action="store_true",
+                     help="외부 접속용 Cloudflare 터널을 자동으로 켜고 그 주소를 링크에 쓴다 (cloudflared 필요)")
     net.add_argument("--trust-proxy", action="store_true",
                      help="리버스 프록시/터널 뒤에서 실행할 때만 켠다 (X-Forwarded-* 신뢰)")
     net.add_argument("--cert", default=None, help="HTTPS 인증서 파일(PEM)")
@@ -189,6 +192,15 @@ def main(argv: list[str] | None = None) -> int:
     host = "0.0.0.0" if args.lan else args.host
     scheme = "https" if ssl_context else "http"
     public_url = args.public_url
+    tunnel_proc = None
+    if args.tunnel:
+        from server.tunnel import TunnelError, start_quick_tunnel
+        print("외부 접속용 터널을 켜는 중입니다… (최대 45초)")
+        try:
+            tunnel_proc, public_url = start_quick_tunnel(args.port)
+        except TunnelError as e:
+            print(f"터널을 켤 수 없습니다: {e}", file=sys.stderr)
+            return 2
     cfg = AppConfig(
         data_dir=args.data_dir,
         admin_key=admin_key,
@@ -197,7 +209,7 @@ def main(argv: list[str] | None = None) -> int:
         public_url=public_url,
         lan_ips=lan_ips() if host not in ("127.0.0.1", "localhost", "::1") else [],
         retention_days=args.retention_days,
-        trust_proxy=args.trust_proxy,
+        trust_proxy=args.trust_proxy or bool(tunnel_proc),
         secure=bool(ssl_context) or bool(public_url and public_url.startswith("https://")),
     )
 
@@ -220,6 +232,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f" 자동 백업      : {mirror.dest}  ({mirror.interval:g}초마다 확인)")
     auction.start_background()
     print_banner(cfg, scheme, key_generated)
+    if public_url:
+        from server.selfcheck import run_in_background
+        run_in_background(public_url)
 
     if not args.no_browser:
         url = f"{scheme}://127.0.0.1:{cfg.port}/#admin={admin_key}"

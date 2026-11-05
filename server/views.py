@@ -102,6 +102,16 @@ def _base(room: Room, now: float, online_teams: Iterable[int], host_online: bool
         "leftover_count": len(room.leftover),
         "upcoming": None,
     }
+    # 유찰자 목록: 이미 한 번 경매에 올라 모두에게 공개된 선수들이므로 BLIND 모드에서도 공개한다.
+    #  - retry   : 재경매를 기다리는 선수 (정규 경매에서 유찰)
+    #  - leftover: 재경매에서도 유찰되어 마지막에 자동 배정될 선수
+    retry_ids = list(room.unsold_queue)
+    if room.state == AuctionState.UNSOLD_AUCTION:
+        retry_ids += room.main_queue          # 재경매 라운드에서는 남은 대기열이 곧 유찰자들이다
+    queue["unsold_players"] = (
+        [{**_player_brief(room.players[pid]), "round": "retry"} for pid in retry_ids]
+        + [{**_player_brief(room.players[pid]), "round": "leftover"} for pid in room.leftover]
+    ) if in_auction else []
     if in_auction and room.settings.order_public:
         queue["upcoming"] = [_player_brief(room.players[pid]) for pid in room.main_queue]
         queue["unsold"] = [_player_brief(room.players[pid]) for pid in room.unsold_queue]

@@ -132,7 +132,20 @@ export function renderQueue(box, state) {
           h('ol', { class: 'upcoming' },
             q.upcoming.map((p) => h('li', { text: p.role ? `${p.name} · ${ROLE_NAME[p.role]}` : p.name }))))
       : (registered ? null : h('p', { class: 'sub', text: '경매 순서는 비공개입니다.' })),
+    registered ? null : renderUnsoldList(q.unsold_players || []),
   );
+}
+
+// 유찰자 목록: 경매에서 팔리지 않은 선수들 (재경매 대기 / 재경매에서도 유찰)
+function renderUnsoldList(list) {
+  return h('div', { class: 'unsold-box' },
+    h('h3', { text: `유찰자 목록 (${list.length}명)` }),
+    list.length
+      ? h('ul', { class: 'unsold-list' }, list.map((p) => h('li', {},
+          p.role ? roleIcon(p.role, { small: true }) : null,
+          h('span', { text: p.name }),
+          h('span', { class: 'chip chip-sm chip-muted', text: p.round === 'leftover' ? '재경매 유찰' : '재경매 대기' }))))
+      : h('p', { class: 'sub', text: '유찰된 선수가 없습니다.' }));
 }
 
 // ---------------------------------------------------------------- 활동 기록

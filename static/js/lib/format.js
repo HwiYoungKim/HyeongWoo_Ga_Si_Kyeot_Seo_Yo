@@ -27,6 +27,8 @@ export function activityText(e, teams) {
     case 'unsold': return `${e.player_name ?? '선수'} 유찰`;
     case 'unsold_round': return `유찰자 ${e.count}명 재경매를 시작합니다.`;
     case 'auto_assign': return `${e.player_name ?? '선수'} → ${tn(e.team)} 팀 자동 배정 (0P)`;
+    case 'forced_stop': return '모든 팀장이 포인트를 소진해 경매를 종료하고, 남은 선수를 자동 배정합니다.';
+    case 'forced_sold': return `${tn(e.team)} 팀의 입찰을 넘길 수 있는 팀이 없어 즉시 낙찰합니다.`;
     case 'paused': return e.reason === 'restart' ? '서버 재시작으로 일시정지되었습니다.' : '일시정지';
     case 'resumed': return '경매 재개';
     case 'bracket_start': return '대진 선택을 시작합니다. (잔여 포인트가 많은 팀부터 지명)';
