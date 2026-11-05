@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex, nofollow">
+  <title>선수 경매</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="page-home">
+  <div id="toasts" aria-live="polite"></div>
+  <main class="container narrow">
+    <h1>선수 경매</h1>
+    <p class="sub">포인트로 팀원을 입찰해 팀을 꾸리는 실시간 경매입니다. 이 서버를 연 사람(주최자)이 방을 만들고, 팀장·관전자에게 링크를 나눠줍니다.</p>
+
+    <form id="create-form" class="panel" autocomplete="off">
+      <h2>방 만들기</h2>
+      <label class="field">
+        <span>관리자 키</span>
+        <input id="admin-key" type="password" required autocomplete="off" placeholder="서버 실행 창(콘솔)에 표시된 키">
+      </label>
+      <label class="field">
+        <span>방 제목</span>
+        <input id="title" type="text" maxlength="40" required value="내전 팀원 경매">
+      </label>
+      <div class="form-grid">
+        <label class="field">
+          <span>팀 수 (2–10)</span>
+          <input id="num-teams" type="number" min="2" max="10" step="1" value="4" required>
+        </label>
+        <label class="field">
+          <span>팀당 인원 (팀장 포함, 2–10)</span>
+          <input id="members" type="number" min="2" max="10" step="1" value="5" required>
+        </label>
+      </div>
+      <label class="field">
+        <span>링크에 쓸 서버 주소</span>
+        <input id="base-url" type="text" list="base-urls" placeholder="http://192.168.0.x:5000">
+        <datalist id="base-urls"></datalist>
+        <small class="sub">참가자가 접속할 수 있는 주소여야 합니다. 같은 와이파이라면 LAN 주소, 터널을 쓴다면 터널 주소를 고르세요.</small>
+      </label>
+      <p id="secure-note" class="warn-box" hidden>현재 암호화되지 않은 HTTP 입니다. 신뢰할 수 있는 같은 네트워크에서만 사용하세요.</p>
+      <button type="submit" class="btn btn-primary">방 만들기</button>
+    </form>
+
+    <section id="result" class="panel" hidden></section>
+  </main>
+  <script type="module" src="/static/js/home.js"></script>
+</body>
+</html>

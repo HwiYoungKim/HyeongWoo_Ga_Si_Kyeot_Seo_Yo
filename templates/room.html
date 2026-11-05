@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex, nofollow">
+  <title>선수 경매</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="page-room">
+  <div id="toasts" aria-live="polite"></div>
+  <header class="topbar">
+    <h1 id="room-title">경매방</h1>
+    <span id="role-badge" class="badge"></span>
+    <span id="state-label" class="chip"></span>
+    <span id="conn-status" class="conn conn-wait">접속 중…</span>
+  </header>
+  <main class="layout">
+    <section id="stage" class="panel stage"></section>
+    <section id="role-panel" class="panel"></section>
+    <section id="teams" class="panel"></section>
+    <aside class="side">
+      <div id="bracket" class="panel" hidden></div>
+      <div id="queue" class="panel"></div>
+      <div id="activity" class="panel"></div>
+      <div id="chat" class="panel"></div>
+    </aside>
+  </main>
+  <script src="/static/vendor/socket.io.min.js"></script>
+  <script type="module" src="/static/js/room.js"></script>
+</body>
+</html>
