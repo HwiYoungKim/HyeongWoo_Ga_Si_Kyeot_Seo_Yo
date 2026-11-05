@@ -1,0 +1,27 @@
+# 선수 신상 정보가 들어 있는 방 데이터 — 절대 커밋하지 않는다
+data/
+*.json.tmp
+.tmp-*
+
+# 접속 링크를 내려받은 파일
+*-links.txt
+links*.txt
+
+# 인증서/개인키
+*.pem
+*.key
+*.crt
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.env
+
+# OS/에디터
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
