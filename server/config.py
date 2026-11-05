@@ -17,6 +17,7 @@ TITLE_LEN = 40
 NAME_LEN = 20
 POSITION_LEN = 20
 INTRO_LEN = 128
+BATTLETAG_LEN = 21            # 이름 12자 + '#' + 숫자 8자
 NICK_LEN = 16
 CHAT_LEN = 200
 
@@ -34,6 +35,18 @@ FIXED_INCREMENT_RANGE = (1, 100_000)
 RATIO_INCREMENT_RANGE = (0.01, 1.0)
 RESERVE_RANGE = (0, 100_000)
 ELO_RANGE = (0, 9999)
+
+# --- 선수 프로필 -------------------------------------------------------------
+MAX_HEROES = 5                # 선수 한 명이 고를 수 있는 영웅 수
+MAX_IMAGES_PER_PLAYER = 2     # 선수 한 명의 이미지 수 (0~2)
+MAX_ROSTER = 500              # 영구 선수 명부 최대 인원
+
+# --- 이미지 --------------------------------------------------------------------
+MAX_UPLOAD_BYTES = 6 * 1024 * 1024    # 업로드 원본 상한 (이 라우트에만 적용)
+MAX_IMAGE_PIXELS = 36_000_000         # 디코딩 전 해상도 상한 (이미지 폭탄 방지)
+IMAGE_MAX_SIDE = 1600                 # 저장할 때 긴 변 최대 픽셀
+MAX_STORED_IMAGES = 600               # 디스크 남용 방지
+IMAGE_ORPHAN_GRACE_SEC = 24 * 3600    # 어떤 선수에게도 연결되지 않은 이미지를 지우기까지의 유예
 
 # --- 네트워크 ---------------------------------------------------------------
 MAX_REQUEST_BYTES = 64 * 1024         # HTTP 본문 상한

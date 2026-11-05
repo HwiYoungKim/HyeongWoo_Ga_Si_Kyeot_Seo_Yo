@@ -13,7 +13,7 @@ import re
 import unicodedata
 from typing import Any, Optional
 
-from . import config
+from . import config, heroes
 
 # 제어문자(탭/개행 제외 -> 아래에서 공백으로 치환), 제로폭 문자, BiDi 제어 문자
 _CONTROL_RE = re.compile(
@@ -23,6 +23,8 @@ _SPACE_RE = re.compile(r"[ \t\r\n   ]+")
 
 ROOM_ID_RE = re.compile(r"^[A-Za-z0-9_-]{6,16}$")
 TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{20,64}$")
+IMAGE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{16}$")
+UID_RE = re.compile(r"^[a-f0-9]{16}$")
 
 
 class ValidationError(Exception):
@@ -149,12 +151,83 @@ def parse_team_entries(entries: Any, expected: int) -> list[dict[str, Any]]:
     return out
 
 
+def is_valid_image_id(value: Any) -> bool:
+    return isinstance(value, str) and bool(IMAGE_ID_RE.match(value))
+
+
+def is_valid_uid(value: Any) -> bool:
+    return isinstance(value, str) and bool(UID_RE.match(value))
+
+
+def parse_battletag(value: Any, *, field: str = "배틀태그") -> str:
+    """오버워치 배틀태그: 이름(3~12자, 글자/숫자, 숫자로 시작 불가) + '#' + 숫자 4~8자. 비워 둘 수 있다."""
+    text = clean_text(value, config.BATTLETAG_LEN, field=field)
+    if not text:
+        return ""
+    name, sep, digits = text.partition("#")
+    ok = (
+        sep == "#"
+        and 3 <= len(name) <= 12
+        and name[0].isalpha()
+        and all(ch.isalnum() for ch in name)
+        and 4 <= len(digits) <= 8
+        and digits.isascii() and digits.isdigit()
+    )
+    if not ok:
+        raise ValidationError(f"{field} 형식이 올바르지 않습니다. 예) Player#1234")
+    return text
+
+
+def parse_role(value: Any, *, field: str = "포지션") -> str:
+    if value not in heroes.ROLES:
+        raise ValidationError(f"{field}을(를) 탱커/딜러/힐러 중에서 선택해 주세요.")
+    return value
+
+
+def parse_hero_ids(value: Any, *, field: str = "영웅") -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValidationError(f"{field}: 목록 형식이 올바르지 않습니다.")
+    if len(value) > config.MAX_HEROES:
+        raise ValidationError(f"{field}은(는) 최대 {config.MAX_HEROES}개까지 선택할 수 있습니다.")
+    out: list[str] = []
+    for hid in value:
+        if not isinstance(hid, str) or hid not in heroes.HERO_IDS:
+            raise ValidationError(f"{field}: 알 수 없는 영웅입니다.")
+        if hid in out:
+            raise ValidationError(f"{field}: 같은 영웅을 두 번 고를 수 없습니다.")
+        out.append(hid)
+    return out
+
+
+def parse_image_ids(value: Any, *, field: str = "이미지") -> list[str]:
+    """이미지 id 형식만 검사한다. 실제로 존재하는지는 호출한 쪽(저장소)이 확인한다."""
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValidationError(f"{field}: 목록 형식이 올바르지 않습니다.")
+    if len(value) > config.MAX_IMAGES_PER_PLAYER:
+        raise ValidationError(f"{field}는 최대 {config.MAX_IMAGES_PER_PLAYER}장까지 등록할 수 있습니다.")
+    out: list[str] = []
+    for iid in value:
+        if not is_valid_image_id(iid):
+            raise ValidationError(f"{field}: 올바르지 않은 이미지입니다.")
+        if iid in out:
+            raise ValidationError(f"{field}: 같은 이미지를 두 번 등록할 수 없습니다.")
+        out.append(iid)
+    return out
+
+
 def parse_player_entries(entries: Any) -> list[dict[str, Any]]:
+    """선수 목록 검증. uid 는 비어 있으면 빈 문자열로 두고, 새로 부여하는 일은 호출한 쪽이 한다."""
     if not isinstance(entries, list):
         raise ValidationError("매물 목록 형식이 올바르지 않습니다.")
     if len(entries) > config.MAX_PLAYERS:
         raise ValidationError(f"매물은 최대 {config.MAX_PLAYERS}명까지 등록할 수 있습니다.")
     out = []
+    seen_uids: set[str] = set()
+    seen_tags: set[str] = set()
     for i, entry in enumerate(entries, start=1):
         if not isinstance(entry, dict):
             raise ValidationError(f"{i}번 매물 형식이 올바르지 않습니다.")
@@ -163,11 +236,30 @@ def parse_player_entries(entries: Any) -> list[dict[str, Any]]:
             elo = clean_int(elo, *config.ELO_RANGE, field=f"{i}번 매물 Elo")
         else:
             elo = None
+
+        uid = entry.get("uid") or ""
+        if uid and not is_valid_uid(uid):
+            raise ValidationError(f"{i}번 매물 식별자가 올바르지 않습니다.")
+        if uid:
+            if uid in seen_uids:
+                raise ValidationError(f"{i}번 매물이 다른 매물과 중복되었습니다.")
+            seen_uids.add(uid)
+
+        battletag = parse_battletag(entry.get("battletag"), field=f"{i}번 매물 배틀태그")
+        if battletag:
+            key = battletag.casefold()
+            if key in seen_tags:
+                raise ValidationError(f"{i}번 매물의 배틀태그가 다른 매물과 중복되었습니다.")
+            seen_tags.add(key)
+
         out.append({
+            "uid": uid,
             "name": clean_text(entry.get("name"), config.NAME_LEN,
                                field=f"{i}번 매물 이름", required=True),
-            "position": clean_text(entry.get("position"), config.POSITION_LEN,
-                                   field=f"{i}번 매물 포지션"),
+            "battletag": battletag,
+            "role": parse_role(entry.get("role"), field=f"{i}번 매물 포지션"),
+            "heroes": parse_hero_ids(entry.get("heroes"), field=f"{i}번 매물 영웅"),
+            "images": parse_image_ids(entry.get("images"), field=f"{i}번 매물 이미지"),
             "elo": elo,
             "intro": clean_text(entry.get("intro"), config.INTRO_LEN,
                                 field=f"{i}번 매물 소개"),

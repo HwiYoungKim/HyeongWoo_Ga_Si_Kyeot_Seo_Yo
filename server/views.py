@@ -5,9 +5,11 @@
 
 공개 범위
 - 주최자(host): 전체. 등록한 선수 전원의 정보와 큐 순서까지.
-- 팀장/관전자(public): "지금 경매 중인 매물"은 전체 정보(이름/포지션/Elo/소개),
+- 팀장/관전자(public): "지금 경매 중인 매물"은 전체 정보(이름/배틀태그/포지션/영웅/Elo/소개/이미지),
   "이미 팀에 영입된 선수"는 이름/포지션/Elo/낙찰가, "대기 중 매물"은 순서 공개(PUBLIC) 모드일 때만
   이름/포지션만, 블라인드(BLIND) 모드에서는 인원수만. 경매 시작 전에는 등록 인원수만 보인다.
+- 이미지: 스냅샷에는 이미지 id 만 들어간다. 실제 파일은 http_routes 의 이미지 API 가 내려주고,
+  그곳에서도 visible_image_ids() 로 같은 규칙을 다시 검사한다. (id 를 알아도 권한이 없으면 못 받는다)
 - 토큰 해시, 다른 사람의 접속 정보 등은 어떤 역할에도 내려가지 않는다.
 """
 from __future__ import annotations
@@ -20,16 +22,32 @@ from .models import AuctionState, Player, Room
 
 def _player_card(p: Player) -> dict[str, Any]:
     """현재 경매 중인 매물: 전체 정보."""
-    return {"id": p.id, "name": p.name, "position": p.position, "elo": p.elo, "intro": p.intro}
+    return {
+        "id": p.id, "name": p.name, "battletag": p.battletag, "role": p.role,
+        "heroes": list(p.heroes), "images": list(p.images), "elo": p.elo, "intro": p.intro,
+    }
 
 
 def _player_brief(p: Player) -> dict[str, Any]:
-    return {"id": p.id, "name": p.name, "position": p.position}
+    return {"id": p.id, "name": p.name, "role": p.role}
 
 
 def _roster_entry(p: Player) -> dict[str, Any]:
-    return {"id": p.id, "name": p.name, "position": p.position, "elo": p.elo,
+    return {"id": p.id, "name": p.name, "role": p.role, "elo": p.elo,
             "winning_bid": p.winning_bid}
+
+
+def visible_image_ids(room: Room, role: str) -> set[str]:
+    """이 역할이 받아갈 수 있는 이미지 id 집합. 이미지 API 의 권한 검사 기준이다.
+
+    - host: 이 방에 등록된 모든 선수의 이미지.
+    - 그 외(팀장/관전자): 지금 경매 중인 매물의 이미지뿐. 대기 중인 선수의 이미지는 받을 수 없다.
+    """
+    if role == "host":
+        return {iid for p in room.players for iid in p.images}
+    if room.current_lot is not None and engine.is_running(room) and 0 <= room.current_lot < len(room.players):
+        return set(room.players[room.current_lot].images)
+    return set()
 
 
 def _activity(room: Room) -> list[dict[str, Any]]:
@@ -128,7 +146,7 @@ def host_view(room: Room, now: float, online_teams: Iterable[int], host_online: 
     view = _base(room, now, online_teams, host_online)
     view["role_view"] = "host"
     view["players"] = [
-        {**_player_card(p), "winning_bid": p.winning_bid, "team": p.assigned_team_id}
+        {**_player_card(p), "uid": p.uid, "winning_bid": p.winning_bid, "team": p.assigned_team_id}
         for p in room.players
     ]
     view["queue"]["main_ids"] = list(room.main_queue)

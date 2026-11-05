@@ -20,7 +20,7 @@ def err_code(fn, *args, **kwargs):
 
 def test_start_requires_exact_player_count():
     room, rng = make_room(3, 3)
-    engine.apply_players(room, [{"name": "a", "position": "", "elo": None, "intro": ""}])
+    engine.apply_players(room, [{"name": "a", "role": "tank", "elo": None, "intro": ""}])
     assert err_code(engine.start_auction, room, 0.0, rng) == "player_count"
 
 

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" role="img" aria-label="딜러">
+  <circle cx="24" cy="24" r="16" fill="none" stroke="#ff6b5e" stroke-width="3.5"/>
+  <circle cx="24" cy="24" r="5" fill="#ff6b5e"/>
+  <path d="M24 3v10M24 35v10M3 24h10M35 24h10" stroke="#ffc2bc" stroke-width="3.5" stroke-linecap="round"/>
+</svg>

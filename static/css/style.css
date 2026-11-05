@@ -162,3 +162,67 @@ textarea { width: 100%; margin: .5rem 0; }
 .toast-ok { border-left-color: var(--ok); }
 
 .fatal-box { max-width: 480px; margin: 3rem auto; text-align: center; }
+
+/* ---- 선수 프로필: 포지션 아이콘 / 영웅 / 이미지 ---- */
+.role-icon { width: 1.7rem; height: 1.7rem; vertical-align: middle; filter: grayscale(1) brightness(.55); opacity: .5; transition: filter .15s, opacity .15s; }
+.role-icon.lit { filter: none; opacity: 1; }
+.role-icon-sm { width: 1.15rem; height: 1.15rem; filter: none; opacity: 1; }
+.role-tag { display: inline-flex; align-items: center; gap: .3rem; font-weight: 700; }
+.profile-line { display: flex; flex-wrap: wrap; gap: .4rem; justify-content: center; align-items: center; margin: .4rem 0; }
+.chip-tag { font-family: ui-monospace, Consolas, monospace; background: #1c2a44; border-color: #34508a; }
+.chip-hero { background: #2a2540; border-color: #4b4379; }
+.chip-removable { cursor: pointer; font: inherit; font-size: .78rem; color: var(--text); }
+.chip-removable:hover { border-color: var(--bad); }
+.hero-line { display: flex; flex-wrap: wrap; gap: .3rem; justify-content: center; margin: .3rem 0; }
+
+.gallery { display: flex; gap: .6rem; justify-content: center; flex-wrap: wrap; margin: .8rem 0; }
+.player-fig { margin: 0; position: relative; cursor: zoom-in; border-radius: 8px; overflow: hidden; background: var(--panel-2); border: 1px solid var(--line); min-width: 8rem; min-height: 6rem; display: flex; align-items: center; justify-content: center; }
+.player-fig:focus-visible { outline: 2px solid var(--accent); }
+.player-img { display: block; max-width: 100%; max-height: 18rem; object-fit: contain; }
+.gallery-1 .player-fig { max-width: min(100%, 26rem); }
+.gallery-2 .player-fig { max-width: calc(50% - .3rem); }
+.player-fig.loading .player-img, .player-fig.failed .player-img { display: none; }
+.player-fig.loading::after { content: "불러오는 중…"; color: var(--sub); font-size: .85rem; padding: 1rem; }
+.img-note { padding: .8rem; }
+.player-fig.zoomed { position: fixed; inset: 0; z-index: 30; max-width: none; border-radius: 0; border: 0; background: rgba(0, 0, 0, .88); cursor: zoom-out; }
+.player-fig.zoomed .player-img { max-width: 96vw; max-height: 94vh; }
+.no-image { display: inline-block; padding: 1.4rem 2.4rem; border: 1px dashed var(--line); border-radius: 8px; color: var(--sub); }
+.no-image-sm { padding: .5rem 1rem; font-size: .85rem; }
+.gallery-empty { margin: .8rem 0; }
+
+/* ---- 주최자: 선수 카드 ---- */
+.player-list { display: flex; flex-direction: column; gap: .7rem; margin: .6rem 0; }
+.player-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: .7rem; display: flex; flex-direction: column; gap: .5rem; }
+.pc-top { display: grid; grid-template-columns: 1.2fr 1.4fr .7fr auto; gap: .4rem; align-items: center; }
+.pc-mid { display: grid; grid-template-columns: auto 1fr; gap: .6rem; align-items: center; }
+.pc-top input, .pc-mid input { width: 100%; min-width: 0; }
+@media (max-width: 700px) { .pc-top, .pc-mid { grid-template-columns: 1fr 1fr; } }
+.role-select { display: flex; gap: .4rem; }
+.role-select.unset { outline: 1px dashed var(--warn); outline-offset: 3px; border-radius: 8px; }
+.role-btn { display: inline-flex; flex-direction: column; align-items: center; gap: .1rem; background: #10131a; color: var(--sub); border: 1px solid var(--line); border-radius: 8px; padding: .3rem .7rem; font-size: .75rem; cursor: pointer; }
+.role-btn:hover { border-color: var(--accent); }
+.role-btn.lit { color: var(--text); font-weight: 700; }
+.role-btn-tank.lit { border-color: #3b82f6; box-shadow: 0 0 10px 1px rgba(59, 130, 246, .65); }
+.role-btn-damage.lit { border-color: #ff6b5e; box-shadow: 0 0 10px 1px rgba(255, 107, 94, .65); }
+.role-btn-support.lit { border-color: #1f9d63; box-shadow: 0 0 10px 1px rgba(31, 157, 99, .65); }
+.role-btn .role-icon { width: 2rem; height: 2rem; }
+
+.hero-selected { display: flex; flex-wrap: wrap; gap: .3rem; min-height: 1.6rem; align-items: center; }
+.hero-panel summary { cursor: pointer; padding: .2rem 0; }
+.hero-grid { display: flex; flex-direction: column; gap: .5rem; margin-top: .5rem; max-height: 16rem; overflow: auto; }
+.hero-group-title { display: flex; align-items: center; gap: .3rem; font-size: .8rem; color: var(--sub); margin-bottom: .2rem; }
+.hero-chips { display: flex; flex-wrap: wrap; gap: .3rem; }
+.hero-chip { background: #10131a; color: var(--text); border: 1px solid var(--line); border-radius: 999px; padding: .15rem .6rem; font-size: .8rem; cursor: pointer; }
+.hero-chip:hover:not(:disabled) { border-color: var(--accent); }
+.hero-chip.on { background: #35306a; border-color: #8b7bff; font-weight: 700; }
+.hero-chip:disabled { opacity: .35; cursor: not-allowed; }
+
+.image-slots { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
+.thumb-box { display: flex; flex-direction: column; gap: .25rem; align-items: center; }
+.thumb { width: 6.5rem; height: 5rem; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); background: #10131a; }
+.file-input { display: none; }
+
+.roster-list { display: flex; flex-direction: column; gap: .35rem; margin-top: .5rem; max-height: 18rem; overflow: auto; }
+.roster-item { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; padding: .3rem .4rem; border: 1px solid var(--line); border-radius: 6px; }
+.roster-item .sub { flex: 1 1 8rem; }
+.roster .role-icon-sm { margin-right: .1rem; }

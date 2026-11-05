@@ -2,26 +2,36 @@
 // 서버가 내려준 값만 그리며, 모든 문자열은 textContent 로 들어간다.
 import { h, replace } from '../lib/dom.js';
 import { fmt, activityText, teamName, STATE_LABEL } from '../lib/format.js';
+import { ROLE_NAME } from '../lib/meta.js';
+import { roleIcon, heroChips, profileLine, gallery } from './profile.js';
 
 const RUNNING = new Set(['MAIN_AUCTION', 'UNSOLD_AUCTION']);
 export const isRunning = (state) => RUNNING.has(state.state) && state.lot;
 
 // ---------------------------------------------------------------- 현재 매물
-export function renderLot(box, state) {
+// 매물 카드(이름/프로필/이미지)는 매물이 바뀔 때만 새로 만든다. 입찰이 들어올 때마다 이미지를
+// 다시 만들면 깜빡이고 서버에 다시 요청하게 되므로, 입찰 현황 부분만 갱신한다.
+export function renderLot(box, state, ctx) {
   if (isRunning(state)) {
     const lot = state.lot;
     const p = lot.player;
-    const leader = lot.highest_team >= 0 ? teamName(state.teams, lot.highest_team) : null;
-    replace(box,
-      h('div', { class: 'lot-card' },
-        h('div', { class: 'lot-name', text: p.name }),
-        h('div', { class: 'lot-meta' },
-          p.position ? h('span', { class: 'chip', text: p.position }) : null,
-          p.elo !== null && p.elo !== undefined ? h('span', { class: 'chip', text: `Elo ${p.elo}` }) : null,
-          h('span', { class: 'chip chip-muted', text: STATE_LABEL[state.state] }),
+    if (box._cardSeq !== lot.seq || !box._live) {
+      const live = h('div', { class: 'lot-live' });
+      replace(box,
+        h('div', { class: 'lot-card' },
+          h('div', { class: 'lot-name', text: p.name }),
+          profileLine(p),
+          h('div', { class: 'hero-line' }, heroChips(p.heroes)),
+          h('div', { class: 'lot-meta' }, h('span', { class: 'chip chip-muted', text: STATE_LABEL[state.state] })),
+          p.intro ? h('p', { class: 'lot-intro', text: p.intro }) : null,
+          gallery(ctx.conn, p.images),
         ),
-        p.intro ? h('p', { class: 'lot-intro', text: p.intro }) : null,
-      ),
+        live);
+      box._cardSeq = lot.seq;
+      box._live = live;
+    }
+    const leader = lot.highest_team >= 0 ? teamName(state.teams, lot.highest_team) : null;
+    replace(box._live,
       h('div', { class: 'bid-status' },
         h('div', { class: 'bid-now' },
           h('span', { class: 'label', text: '현재가' }),
@@ -44,6 +54,8 @@ export function renderLot(box, state) {
     );
     return;
   }
+  box._cardSeq = null;
+  box._live = null;
   const messages = {
     WAITING: '주최자가 경매를 시작하기를 기다리는 중입니다.',
     BRACKET_SELECT: '경매 종료! 잔여 포인트가 많은 팀부터 대진 상대를 지명합니다.',
@@ -93,7 +105,7 @@ export function renderTeams(box, state, ctx) {
           h('ul', { class: 'roster' },
             t.roster.map((p) => h('li', {},
               h('span', { text: p.name }),
-              p.position ? h('span', { class: 'chip chip-sm', text: p.position }) : null,
+              p.role ? roleIcon(p.role, { small: true }) : null,
               h('span', { class: 'sub', text: `${fmt(p.winning_bid)}P` }),
             ))),
         );
@@ -118,7 +130,7 @@ export function renderQueue(box, state) {
       ? h('div', {},
           h('h3', { text: '경매 순서 (공개)' }),
           h('ol', { class: 'upcoming' },
-            q.upcoming.map((p) => h('li', { text: p.position ? `${p.name} · ${p.position}` : p.name }))))
+            q.upcoming.map((p) => h('li', { text: p.role ? `${p.name} · ${ROLE_NAME[p.role]}` : p.name }))))
       : (registered ? null : h('p', { class: 'sub', text: '경매 순서는 비공개입니다.' })),
   );
 }

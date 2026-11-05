@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import logging
+import secrets
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
@@ -24,7 +25,7 @@ from .manager import RoomHandle, RoomManager
 from .models import AuctionState
 from .netutil import client_ip
 from .validators import (
-    ValidationError, clean_int, clean_text, is_valid_room_id, is_valid_token,
+    ValidationError, clean_int, clean_text, is_valid_room_id, is_valid_token, is_valid_uid,
     parse_player_entries, parse_settings_patch, parse_team_entries,
 )
 
@@ -152,6 +153,8 @@ class SocketApi:
         self._on("host_force_sold", ("host",), "host", self._host_force_sold)
         self._on("host_force_unsold", ("host",), "host", self._host_force_unsold)
         self._on("host_pick", ("host",), "host", self._host_pick)
+        self._on("host_roster_list", ("host",), "host", self._host_roster_list)
+        self._on("host_roster_delete", ("host",), "host", self._host_roster_delete)
         self._on("host_reissue", ("host",), "host", self._host_reissue)
         self._on("host_delete_room", ("host",), "host", self._host_delete_room)
 
@@ -295,6 +298,13 @@ class SocketApi:
                              field="팀당 인원") if "members_per_team" in data else None)
         teams = parse_team_entries(data["teams"], room.num_teams) if "teams" in data else None
         players = parse_player_entries(data["players"]) if "players" in data else None
+        if players is not None:
+            for i, p in enumerate(players, start=1):
+                for image_id in p["images"]:
+                    if not self.manager.images.exists(image_id):
+                        raise ValidationError(f"{i}번 매물: 업로드되지 않았거나 삭제된 이미지가 있습니다. 다시 올려 주세요.")
+                if not p["uid"]:
+                    p["uid"] = secrets.token_hex(8)       # 영구 명부의 키 (새 선수에게 부여)
 
         def apply(room, now, rng):
             if room.state != AuctionState.WAITING:
@@ -306,9 +316,40 @@ class SocketApi:
             if teams is not None:
                 engine.apply_teams(room, teams)
             if players is not None:
+                # 이번 저장으로 "빠지는" 이미지를 기억해 둔다 (이전에 저장돼 있었는데 이번에는 없는 것).
+                for p in room.players:
+                    previously_saved.update(p.images)
+                for p in players:
+                    old = self.manager.roster.get(p["uid"]) if p["uid"] else None
+                    if old:
+                        previously_saved.update(old.get("images", []))
+                # 영구 명부를 먼저 저장한다 (명부가 가득 차면 방을 건드리기 전에 실패한다).
+                self.manager.roster.upsert_many(players)
                 engine.apply_players(room, players)
 
-        return self._run(sess, apply)
+        previously_saved: set[str] = set()
+        result = self._run(sess, apply)
+        if result.get("ok") and players is not None:
+            kept = {iid for p in players for iid in p["images"]}
+            # 주최자가 제거한 이미지는 어디에서도 쓰이지 않으면 바로 삭제한다 (개인정보 최소 보관).
+            self.manager.gc_images(grace_sec=0, only=previously_saved - kept)
+            self.manager.gc_images()        # 그 밖의 연결 안 된 이미지는 유예 시간 후 정리
+        return result
+
+    def _host_roster_list(self, _sess: Session, _data: dict[str, Any]) -> dict[str, Any]:
+        return {"ok": True, "players": self.manager.roster.list()}
+
+    def _host_roster_delete(self, _sess: Session, data: dict[str, Any]) -> dict[str, Any]:
+        uid = data.get("uid")
+        if not is_valid_uid(uid):
+            return _fail("bad_request", "대상이 올바르지 않습니다.")
+        entry = self.manager.roster.get(uid)
+        if entry is None:
+            return _fail("not_found", "명부에 없는 선수입니다.")
+        self.manager.roster.delete(uid)
+        # 개인정보 최소 보관: 다른 곳에서 쓰지 않는 이 선수의 이미지는 즉시 삭제한다.
+        self.manager.gc_images(grace_sec=0, only=set(entry.get("images", [])))
+        return {"ok": True, "players": self.manager.roster.list()}
 
     def _host_start(self, sess: Session, _data: dict[str, Any]) -> dict[str, Any]:
         return self._run(sess, lambda room, now, rng: engine.start_auction(room, now, rng))

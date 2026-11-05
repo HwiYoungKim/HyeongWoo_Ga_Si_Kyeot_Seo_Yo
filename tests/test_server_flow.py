@@ -64,7 +64,7 @@ def env(tmp_path):
 
 
 def players_payload(count, prefix="선수"):
-    return [{"name": f"{prefix}{i+1}", "position": "MID", "elo": 1500 + i, "intro": f"소개 {i+1}"}
+    return [{"name": f"{prefix}{i+1}", "role": "damage", "elo": 1500 + i, "intro": f"소개 {i+1}"}
             for i in range(count)]
 
 
@@ -413,7 +413,7 @@ def test_public_order_mode_shows_names_but_not_intro_or_elo(env):
     pub = last_state(obs)
     assert len(pub["queue"]["upcoming"]) == 5
     for item in pub["queue"]["upcoming"]:
-        assert set(item) == {"id", "name", "position"}
+        assert set(item) == {"id", "name", "role"}
 
 
 def test_no_token_material_in_any_snapshot(env):

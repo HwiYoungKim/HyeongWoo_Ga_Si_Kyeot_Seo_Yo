@@ -19,7 +19,7 @@ def make_room(n_teams=3, members=3, *, settings=None, seed=1, start=False, now=0
         ])
     need = n_teams * (members - 1)
     engine.apply_players(room, [
-        {"name": f"선수{i+1}", "position": "", "elo": 1000 + i, "intro": ""} for i in range(need)
+        {"name": f"선수{i+1}", "role": "damage", "elo": 1000 + i, "intro": ""} for i in range(need)
     ])
     rng = random.Random(seed)
     if start:

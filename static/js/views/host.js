@@ -3,6 +3,9 @@
 import { h, replace, toast, copyText } from '../lib/dom.js';
 import { fmt } from '../lib/format.js';
 import { isRunning } from './common.js';
+import { createPlayerRow } from './player_form.js';
+import { loadMeta, heroName } from '../lib/meta.js';
+import { roleIcon } from './profile.js';
 
 export function mountHost(root, ctx) {
   const { conn } = ctx;
@@ -74,52 +77,54 @@ export function mountHost(root, ctx) {
     replace(teamTable, rows);
   }
 
-  // 매물 표
+  // 매물 표 (선수 카드 목록)
   const playerRows = [];
-  const playerTable = h('div', { class: 'table-like' });
+  const playerTable = h('div', { class: 'player-list' });
   const counter = h('strong', { class: 'counter' });
   function addPlayerRow(p = {}) {
-    const row = {
-      name: h('input', { type: 'text', maxlength: 20, placeholder: '이름(닉네임)', value: p.name ?? '' }),
-      pos: h('input', { type: 'text', maxlength: 20, placeholder: '포지션', value: p.position ?? '' }),
-      elo: h('input', { type: 'number', step: 1, min: 0, max: 9999, placeholder: 'Elo', value: p.elo ?? '' }),
-      intro: h('input', { type: 'text', maxlength: 128, placeholder: '소개(선택)', value: p.intro ?? '' }),
-    };
-    row.el = h('div', { class: 'row-grid player-row' }, row.name, row.pos, row.elo, row.intro,
-      h('button', { type: 'button', class: 'btn btn-sm', text: '삭제', onClick: () => {
+    const row = createPlayerRow({
+      data: p, conn,
+      onChange: () => { dirty = true; updateCounter(); },
+      onRemove: () => {
         playerRows.splice(playerRows.indexOf(row), 1);
         row.el.remove();
         dirty = true;
         updateCounter();
-      } }));
+        paintRoster();
+      },
+    });
     playerRows.push(row);
     playerTable.appendChild(row.el);
     updateCounter();
+    paintRoster();
+    return row;
   }
   function setPlayers(list) {
     playerRows.length = 0;
     replace(playerTable);
     for (const p of list) addPlayerRow(p);
     updateCounter();
+    paintRoster();
   }
   function requiredCount() {
     const m = Number(f.members_per_team.value) || 2;
     return (latest ? latest.room.num_teams : 0) * (m - 1);
   }
   function updateCounter() {
-    const filled = playerRows.filter((r) => r.name.value.trim()).length;
+    const named = playerRows.filter((r) => r.hasName());
     const need = requiredCount();
-    counter.textContent = `등록 ${filled}명 / 필요 ${need}명`;
-    counter.className = 'counter ' + (filled === need ? 'ok' : 'bad');
+    const noRole = named.filter((r) => !r.hasRole()).length;
+    counter.textContent = `등록 ${named.length}명 / 필요 ${need}명` + (noRole ? ` · 포지션 미선택 ${noRole}명` : '');
+    counter.className = 'counter ' + (named.length === need && noRole === 0 ? 'ok' : 'bad');
   }
 
-  const paste = h('textarea', { rows: 4, placeholder: '한 줄에 한 명: 이름, 포지션, Elo, 소개 (쉼표 또는 탭으로 구분)\n예) 홍길동, MID, 1500, 서포터 가능' });
+  const paste = h('textarea', { rows: 4, placeholder: '한 줄에 한 명: 이름, 배틀태그, Elo, 소개 (쉼표 또는 탭으로 구분)\n예) 홍길동, Player#1234, 1500, 서포터 가능\n※ 포지션·영웅·이미지는 추가된 카드에서 고릅니다.' });
   const pasteBtn = h('button', { type: 'button', class: 'btn', text: '붙여넣은 목록 추가', onClick: () => {
     for (const line of paste.value.split('\n')) {
       if (!line.trim()) continue;
-      const parts = line.split(/\t|,/).map((s) => s.trim());
+      const parts = line.split(/\t|,/).map((x) => x.trim());
       const elo = parts[2] !== undefined && parts[2] !== '' && !Number.isNaN(Number(parts[2])) ? Number(parts[2]) : '';
-      addPlayerRow({ name: parts[0], position: parts[1] ?? '', elo, intro: parts.slice(3).join(', ') });
+      addPlayerRow({ name: parts[0], battletag: parts[1] ?? '', elo, intro: parts.slice(3).join(', ') });
     }
     paste.value = '';
     dirty = true;
@@ -128,11 +133,57 @@ export function mountHost(root, ctx) {
 
   const saveBtn = h('button', { type: 'button', class: 'btn btn-primary', text: '설정 저장', onClick: () => save() });
 
+  // ------------------------------------------------------------ 영구 선수 명부
+  const rosterList = h('div', { class: 'roster-list' });
+  let roster = [];
+  let rosterLoaded = false;
+  const armed = new Set();      // "정말 삭제" 확인 대기 중인 uid
+  async function loadRoster() {
+    const res = await conn.request('host_roster_list');
+    if (res.ok) { roster = res.players; rosterLoaded = true; paintRoster(); }
+  }
+  function paintRoster() {
+    if (!rosterLoaded) return;
+    const inRoom = new Set(playerRows.map((r) => r.uid).filter(Boolean));
+    replace(rosterList, roster.length
+      ? roster.map((p) => {
+          const used = inRoom.has(p.uid);
+          const del = h('button', { type: 'button', class: 'btn btn-sm btn-warn',
+            text: armed.has(p.uid) ? '정말 삭제' : '명부에서 삭제',
+            onClick: async () => {
+              if (!armed.has(p.uid)) {
+                armed.add(p.uid);
+                setTimeout(() => { armed.delete(p.uid); paintRoster(); }, 4000);
+                paintRoster();
+                return;
+              }
+              armed.delete(p.uid);
+              const res = await act('host_roster_delete', { uid: p.uid });
+              if (res.ok) { roster = res.players; paintRoster(); toast('명부에서 삭제했습니다.', 'ok'); }
+            } });
+          return h('div', { class: 'roster-item' },
+            roleIcon(p.role, { small: true }),
+            h('strong', { text: p.name }),
+            p.battletag ? h('span', { class: 'chip chip-tag', text: p.battletag }) : null,
+            h('span', { class: 'sub', text: (p.heroes || []).map(heroName).join(', ') }),
+            h('span', { class: 'sub', text: `이미지 ${(p.images || []).length}장` }),
+            h('button', { type: 'button', class: 'btn btn-sm', disabled: used, text: used ? '추가됨' : '이 방에 추가',
+              onClick: () => { addPlayerRow(p); dirty = true; } }),
+            del);
+        })
+      : h('p', { class: 'sub', text: '저장된 선수가 없습니다. 설정을 저장하면 등록한 선수가 자동으로 명부에 저장됩니다.' }));
+  }
+  const rosterBox = h('details', { class: 'panel-sub' },
+    h('summary', { text: '저장된 선수 명부 (영구 보관)' }),
+    h('p', { class: 'sub', text: '설정 저장 때마다 선수 정보와 이미지가 서버 PC에 계속 보관됩니다. 방을 삭제하거나 서버를 껐다 켜도 남아 있고, 다음 경매에서 불러올 수 있습니다.' }),
+    rosterList);
+
   const setupBox = h('div', { class: 'host-setup' },
     h('h3', { text: '1. 경매 설정' }), settingsForm,
     h('h3', { text: '2. 팀장 (이름 · 포지션 · 시작 포인트 가감)' }), teamTable,
     h('h3', { text: '3. 매물(선수) 등록' }),
     h('p', {}, counter, h('span', { class: 'sub', text: '  매물 수 = 팀 수 × (팀당 인원 − 1)' })),
+    rosterBox,
     playerTable,
     h('div', { class: 'row' }, h('button', { type: 'button', class: 'btn', text: '행 추가', onClick: () => { addPlayerRow(); dirty = true; } }),
       h('button', { type: 'button', class: 'btn', text: '전체 비우기', onClick: () => { setPlayers([]); dirty = true; } })),
@@ -159,10 +210,7 @@ export function mountHost(root, ctx) {
       teams: teamRows.map((r) => ({
         leader_name: r.name.value, leader_position: r.pos.value, handicap: int(r.handicap),
       })),
-      players: playerRows.filter((r) => r.name.value.trim()).map((r) => ({
-        name: r.name.value, position: r.pos.value,
-        elo: r.elo.value === '' ? null : Number(r.elo.value), intro: r.intro.value,
-      })),
+      players: playerRows.filter((r) => r.hasName()).map((r) => r.getValue()),
     };
   }
 
@@ -192,8 +240,9 @@ export function mountHost(root, ctx) {
   async function save() {
     const res = await act('host_setup', collect());
     if (res.ok) {
-      toast('저장했습니다.', 'ok');
+      toast('저장했습니다. (선수 명부에도 보관됩니다)', 'ok');
       if (conn.state) fill(conn.state);   // 서버가 정리한 값으로 다시 채움
+      loadRoster();
     }
     return res.ok;
   }
@@ -216,11 +265,11 @@ export function mountHost(root, ctx) {
     reissueRow,
     issuedBox,
   );
-  fetch('/api/server-info').then((r) => r.json()).then((info) => {
-    if (!info.ok) return;
+  loadMeta().then((info) => {
+    if (!info) return;
     for (const u of info.urls) baseList.appendChild(h('option', { value: u.url, label: u.label }));
     if (info.urls.length && info.lan_enabled) baseInput.value = info.urls[0].url;
-  }).catch(() => {});
+  });
 
   function buildLink(token) {
     let origin = location.origin;
@@ -247,7 +296,7 @@ export function mountHost(root, ctx) {
   const delInput = h('input', { type: 'text', placeholder: 'DELETE 입력', autocomplete: 'off' });
   const dangerBox = h('details', { class: 'panel-sub danger' },
     h('summary', { text: '방 영구 삭제' }),
-    h('p', { class: 'sub', text: '선수 정보를 포함한 방 데이터가 서버에서 즉시 완전히 삭제되고 모든 참가자가 끊깁니다. 되돌릴 수 없습니다.' }),
+    h('p', { class: 'sub', text: '이 방의 데이터(설정, 경매 기록, 채팅)가 서버에서 즉시 삭제되고 모든 참가자가 끊깁니다. 되돌릴 수 없습니다. 영구 보관 중인 선수 명부와 이미지는 지워지지 않습니다. (명부 삭제는 위의 "저장된 선수 명부"에서)' }),
     h('div', { class: 'row' }, delInput,
       h('button', { type: 'button', class: 'btn btn-warn', text: '삭제', onClick: async () => {
         if (delInput.value !== 'DELETE') { toast('DELETE 를 정확히 입력해 주세요.', 'error'); return; }
@@ -268,6 +317,7 @@ export function mountHost(root, ctx) {
         state.teams.map((t) => h('button', { type: 'button', class: 'btn btn-sm', text: `팀 ${t.id + 1} 링크 재발급`,
           onClick: () => reissue('leader', t.id, `팀 ${t.id + 1}`) })));
       fill(state);
+      loadRoster();
       initialized = true;
     }
     const waiting = state.state === 'WAITING';

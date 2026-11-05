@@ -18,6 +18,8 @@ from typing import Any, Callable, Optional
 from . import config, engine, security
 from .engine import AuctionError
 from .models import AuctionState, Room
+from .images import ImageStore
+from .roster import RosterStore
 from .storage import RoomStore
 
 log = logging.getLogger("auction.manager")
@@ -54,8 +56,12 @@ class RoomManager:
         rng: Optional[random.Random] = None,
         retention_days: float = config.DEFAULT_RETENTION_DAYS,
         max_rooms: int = config.MAX_ROOMS,
+        images: Optional[ImageStore] = None,
+        roster: Optional[RosterStore] = None,
     ):
         self.store = store
+        self.images = images or ImageStore(store.root)       # 선수 이미지 (방과 무관하게 영구 보관)
+        self.roster = roster or RosterStore(store.root)      # 영구 선수 명부
         self.clock = clock
         self.rng: random.Random = rng or random.SystemRandom()
         self.retention_days = retention_days
@@ -112,6 +118,29 @@ class RoomManager:
             self._rooms.pop(room_id, None)
         self.store.delete(room_id)
         log.info("방 삭제: %s", room_id)
+        # 방 데이터만 지운다. 선수 명부와 거기에 연결된 이미지는 영구 보관이므로 남는다.
+        self.gc_images()
+
+    def gc_images(self, grace_sec: float = config.IMAGE_ORPHAN_GRACE_SEC,
+                  only: Optional[set[str]] = None) -> int:
+        """어느 방의 선수에게도, 영구 명부에도 연결되지 않은 이미지를 지운다.
+
+        방금 올려서 아직 저장 버튼을 누르지 않은 이미지를 지우지 않도록 grace_sec 동안은 둔다.
+        """
+        referenced = set(self.roster.image_ids())
+        for handle in self.all_handles():
+            with handle.lock:
+                for p in handle.room.players:
+                    referenced.update(p.images)
+        removed = 0
+        for image_id, age in self.images.ages().items():
+            if only is not None and image_id not in only:
+                continue
+            if image_id not in referenced and age >= grace_sec and self.images.delete(image_id):
+                removed += 1
+        if removed:
+            log.info("연결되지 않은 이미지 %d개를 정리했습니다.", removed)
+        return removed
 
     def purge_expired(self) -> list[str]:
         removed = self.store.purge_older_than(self.retention_days)
@@ -120,6 +149,8 @@ class RoomManager:
                 self._rooms.pop(rid, None)
         for rid in removed:
             log.info("보존 기간 만료로 방 삭제: %s", rid)
+        if removed:
+            self.gc_images()
         return removed
 
     # ------------------------------------------------------------------ 인증

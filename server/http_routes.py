@@ -8,15 +8,16 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import urlparse
 
-from flask import Flask, abort, jsonify, render_template, request
+from flask import Flask, abort, jsonify, render_template, request, send_file
 
-from . import config, security
+from . import config, heroes, security, views
 from .app_config import AppConfig
 from .engine import AuctionError
+from .images import ImageError
 from .manager import RoomManager
 from .netutil import client_ip
 from .validators import (
-    ValidationError, clean_int, is_valid_room_id, parse_room_title,
+    ValidationError, clean_int, is_valid_image_id, is_valid_room_id, is_valid_token, parse_room_title,
 )
 
 
@@ -24,6 +25,77 @@ def register_routes(app: Flask, manager: RoomManager, cfg: AppConfig, admin_fail
     def _json_error(message: str, status: int, code: str = "error"):
         resp = jsonify({"ok": False, "code": code, "message": message})
         resp.status_code = status
+        return resp
+
+    image_failures = security.FailureLimiter(limit=30, window=60, lockout=120)
+    image_reads = security.RateLimiter(capacity=60, refill_per_sec=20)
+    image_uploads = security.RateLimiter(capacity=8, refill_per_sec=0.5)
+
+    def _same_origin() -> bool:
+        origin = request.headers.get("Origin")
+        return not origin or urlparse(origin).netloc == request.host
+
+    def _bearer(room_id: str):
+        """Authorization: Bearer <토큰> 으로 역할을 판별한다. 반환: (인증정보, 방 핸들) 또는 (None, 오류응답).
+
+        토큰은 URL 이 아니라 헤더로 보낸다 (서버/프록시 로그와 브라우저 기록에 남지 않게).
+        실패 사유(방 없음/토큰 틀림/권한 없음)는 구분해서 알려주지 않는다.
+        """
+        ip = client_ip(request.environ, cfg.trust_proxy)
+        if image_failures.blocked(ip):
+            return None, _json_error("잠시 후 다시 시도해 주세요.", 429, "blocked")
+        header = request.headers.get("Authorization", "")
+        token = header[7:] if header.startswith("Bearer ") else ""
+        auth = None
+        if is_valid_room_id(room_id) and is_valid_token(token):
+            auth = manager.authenticate(room_id, token)
+        if auth is None:
+            image_failures.record_failure(ip)
+            return None, _json_error("권한이 없습니다.", 403, "forbidden")
+        image_failures.record_success(ip)
+        return auth, manager.get(room_id)
+
+    @app.post("/api/rooms/<room_id>/images")
+    def upload_image(room_id: str):
+        # 이 라우트만 업로드 크기 상한을 올린다 (전역 상한은 64KB). 본문을 읽기 전에 지정해야 한다.
+        request.max_content_length = config.MAX_UPLOAD_BYTES
+        if not _same_origin():
+            return _json_error("허용되지 않은 요청입니다.", 403, "origin")
+        auth, handle = _bearer(room_id)
+        if auth is None:
+            return handle
+        if auth.role != "host":
+            return _json_error("권한이 없습니다.", 403, "forbidden")
+        if not image_uploads.allow(room_id):
+            return _json_error("업로드가 너무 빠릅니다. 잠시 후 다시 시도해 주세요.", 429, "rate_limited")
+        raw = request.get_data(cache=False)
+        try:
+            image_id = manager.images.save_upload(raw)
+        except ImageError as e:
+            return _json_error(e.message, 413 if e.code == "too_large" else 400, e.code)
+        return jsonify({"ok": True, "id": image_id}), 201
+
+    @app.get("/api/rooms/<room_id>/images/<image_id>")
+    def get_image(room_id: str, image_id: str):
+        auth, handle = _bearer(room_id)
+        if auth is None:
+            return handle
+        ip = client_ip(request.environ, cfg.trust_proxy)
+        if not image_reads.allow(ip):
+            return _json_error("요청이 너무 빠릅니다.", 429, "rate_limited")
+        path = manager.images.path_for(image_id) if is_valid_image_id(image_id) else None
+        allowed = False
+        if path is not None:
+            if auth.role == "host":
+                allowed = True          # 주최자: 방금 올려 아직 저장 전인 이미지와 명부의 이미지도 미리 볼 수 있다
+            else:
+                with handle.lock:
+                    allowed = image_id in views.visible_image_ids(handle.room, auth.role)
+        if not allowed or path is None:
+            return _json_error("찾을 수 없습니다.", 404, "not_found")
+        resp = send_file(path, mimetype="image/webp", conditional=False, max_age=0)
+        resp.headers["Cache-Control"] = "no-store"
+        resp.headers["Content-Disposition"] = "inline"
         return resp
 
     @app.get("/")
@@ -50,6 +122,11 @@ def register_routes(app: Flask, manager: RoomManager, cfg: AppConfig, admin_fail
             "urls": urls,
             "lan_enabled": cfg.lan_enabled,
             "secure": cfg.secure,
+            "heroes": heroes.hero_list_for_client(),
+            "player_limits": {
+                "max_heroes": config.MAX_HEROES, "max_images": config.MAX_IMAGES_PER_PLAYER,
+                "max_upload_bytes": config.MAX_UPLOAD_BYTES,
+            },
             "limits": {
                 "min_teams": config.MIN_TEAMS, "max_teams": config.MAX_TEAMS,
                 "min_members": config.MIN_TEAM_MEMBERS, "max_members": config.MAX_TEAM_MEMBERS,

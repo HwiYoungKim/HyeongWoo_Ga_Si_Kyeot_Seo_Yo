@@ -138,7 +138,7 @@ def security_headers(host: str | None, secure: bool, is_static: bool) -> dict[st
         "default-src 'none'",
         "script-src 'self'",
         "style-src 'self'",
-        "img-src 'self' data:",
+        "img-src 'self' data: blob:",
         f"connect-src {connect}",
         "base-uri 'none'",
         "form-action 'self'",

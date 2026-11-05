@@ -11,6 +11,8 @@
   python app.py --list-rooms             # 저장된 방 목록
   python app.py --delete-room <방ID>     # 방 하나 삭제 (선수 정보 포함)
   python app.py --purge-days 7           # 7일 넘게 갱신되지 않은 방 모두 삭제
+  python app.py --list-roster            # 영구 선수 명부 목록
+  python app.py --wipe-roster            # 선수 명부와 이미지를 모두 삭제
 
 자세한 보안 안내는 README.md 를 참고한다.
 """
@@ -69,12 +71,16 @@ def build_parser() -> argparse.ArgumentParser:
     adm.add_argument("--list-rooms", action="store_true", help="저장된 방 목록 출력")
     adm.add_argument("--delete-room", metavar="ROOM_ID", help="방 하나를 삭제")
     adm.add_argument("--purge-days", type=float, metavar="DAYS", help="DAYS일 넘게 갱신 안 된 방 전부 삭제")
+    adm.add_argument("--list-roster", action="store_true", help="영구 선수 명부 목록 출력")
+    adm.add_argument("--wipe-roster", action="store_true",
+                     help="영구 선수 명부와 연결된 이미지를 모두 삭제 (확인 문구 입력 필요)")
     return p
 
 
 def run_admin_command(args: argparse.Namespace) -> bool:
     """관리 명령이 지정되었으면 실행하고 True 를 반환한다."""
-    if not (args.list_rooms or args.delete_room or args.purge_days is not None):
+    if not (args.list_rooms or args.delete_room or args.purge_days is not None
+            or args.list_roster or args.wipe_roster):
         return False
     store = RoomStore(args.data_dir)
     if args.list_rooms:
@@ -94,6 +100,29 @@ def run_admin_command(args: argparse.Namespace) -> bool:
     if args.purge_days is not None:
         removed = store.purge_older_than(args.purge_days)
         print(f"{len(removed)}개 방을 삭제했습니다.")
+    if args.delete_room or args.purge_days is not None or args.wipe_roster or args.list_roster:
+        from server.manager import RoomManager
+        manager = RoomManager(store)
+        manager.load_from_disk()
+        if args.list_roster:
+            players = manager.roster.list()
+            if not players:
+                print("선수 명부가 비어 있습니다.")
+            for pl in players:
+                print(f"{pl['uid']}  {pl.get('role') or '-':<8} {pl.get('name')}  {pl.get('battletag') or ''}"
+                      f"  이미지 {len(pl.get('images', []))}장")
+        if args.wipe_roster:
+            typed = input(f"선수 명부 {manager.roster.count()}명과 이미지를 모두 삭제합니다. 계속하려면 DELETE 를 입력: ")
+            if typed.strip() == "DELETE":
+                n = manager.roster.clear()
+                manager.gc_images(grace_sec=0)
+                print(f"명부 {n}명을 삭제했습니다.")
+            else:
+                print("취소했습니다.")
+        elif args.delete_room or args.purge_days is not None:
+            n = manager.gc_images()
+            if n:
+                print(f"연결되지 않은 이미지 {n}개를 정리했습니다.")
     return True
 
 
@@ -110,7 +139,7 @@ def print_banner(cfg: AppConfig, scheme: str, key_is_generated: bool) -> None:
     if cfg.public_url:
         print(f" 외부 공개 주소 : {cfg.public_url}")
     print(f" 관리자 키      : {cfg.admin_key}" + ("   (이번 실행에서만 유효)" if key_is_generated else ""))
-    print(f" 데이터 폴더    : {cfg.data_dir}")
+    print(f" 데이터 폴더    : {cfg.data_dir}   (선수 명부·이미지 포함, git 에 올라가지 않음)")
     print(f" 보존 기간      : {'무제한' if cfg.retention_days <= 0 else f'{cfg.retention_days:g}일'}")
     print(line)
     if cfg.lan_enabled and not cfg.secure and not cfg.public_url:
@@ -171,6 +200,7 @@ def main(argv: list[str] | None = None) -> int:
     WSGIRequestHandler.server_version = "Auction"
     WSGIRequestHandler.sys_version = ""
     auction = create_app(cfg)
+    auction.manager.gc_images()           # 시작할 때 연결되지 않은 오래된 이미지 정리
     auction.start_background()
     print_banner(cfg, scheme, key_generated)
 

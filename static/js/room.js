@@ -4,6 +4,7 @@
 import { Connection } from './lib/net.js';
 import { h, replace, toast, $ } from './lib/dom.js';
 import { STATE_LABEL, ROLE_LABEL } from './lib/format.js';
+import { loadMeta } from './lib/meta.js';
 import * as common from './views/common.js';
 import { mountChat } from './views/chat.js';
 import { savedNickname } from './views/observer.js';
@@ -75,7 +76,7 @@ function start() {
     document.title = `${state.room.title} — 선수 경매`;
     el.title.textContent = state.room.title;
     el.stateLabel.textContent = STATE_LABEL[state.state] + (state.paused ? ' · 일시정지' : '');
-    common.renderLot(lotBox, state);
+    common.renderLot(lotBox, state, ctx);
     common.renderTeams(el.teams, state, ctx);
     common.renderQueue(el.queue, state);
     common.renderActivity(el.activity, state);
@@ -91,6 +92,7 @@ function start() {
       render(conn.state);
       return;
     }
+    await loadMeta();                 // 영웅 이름표/제한값을 받은 뒤에 화면을 만든다
     ctx = { conn, role: info.role, teamId: info.teamId, pick };
     el.role.textContent = ROLE_LABEL[info.role];
     el.role.className = `badge badge-${info.role}`;

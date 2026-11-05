@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import math
+import secrets
 import time
 from typing import Any, Protocol
 
@@ -181,10 +182,15 @@ def apply_teams(room: Room, entries: list[dict[str, Any]]) -> None:
 
 def apply_players(room: Room, entries: list[dict[str, Any]]) -> None:
     _require_state(room, AuctionState.WAITING)
-    room.players = [
-        Player(id=i, name=e["name"], position=e["position"], elo=e["elo"], intro=e["intro"])
-        for i, e in enumerate(entries)
-    ]
+    players = []
+    for i, e in enumerate(entries):
+        players.append(Player(
+            id=i, name=e["name"], uid=e.get("uid") or secrets.token_hex(8),
+            battletag=e.get("battletag", ""), role=e.get("role", ""),
+            heroes=list(e.get("heroes", [])), images=list(e.get("images", [])),
+            elo=e.get("elo"), intro=e.get("intro", ""),
+        ))
+    room.players = players
     _touch(room)
 
 

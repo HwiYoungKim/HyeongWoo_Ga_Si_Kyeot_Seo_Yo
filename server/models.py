@@ -59,7 +59,11 @@ class Settings:
 class Player:
     id: int
     name: str
-    position: str = ""
+    uid: str = ""                         # 방과 무관한 영구 식별자 (선수 명부의 키)
+    battletag: str = ""
+    role: str = ""                        # tank | damage | support
+    heroes: list[str] = field(default_factory=list)   # 영웅 id (최대 5)
+    images: list[str] = field(default_factory=list)   # 이미지 id (0~2)
     elo: Optional[int] = None
     intro: str = ""
     winning_bid: int = 0
@@ -70,7 +74,9 @@ class Player:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Player":
-        return cls(**data)
+        # 예전 버전 파일(필드 없음/폐기된 position)과 알 수 없는 키를 모두 견딘다.
+        known = cls.__dataclass_fields__.keys()
+        return cls(**{k: v for k, v in data.items() if k in known})
 
 
 @dataclass
