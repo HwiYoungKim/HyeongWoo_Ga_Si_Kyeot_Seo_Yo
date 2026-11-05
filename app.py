@@ -63,6 +63,13 @@ def build_parser() -> argparse.ArgumentParser:
     sec.add_argument("--retention-days", type=float, default=config.DEFAULT_RETENTION_DAYS,
                      help=f"마지막 사용 후 N일이 지난 방을 자동 삭제 (기본 {config.DEFAULT_RETENTION_DAYS}, 0 이면 끔)")
 
+    bk = p.add_argument_group("백업")
+    bk.add_argument("--backup-dir", metavar="PATH",
+                    help="데이터(방·선수 명부·이미지)를 이 폴더로 자동 복사한다. Google Drive for Desktop 의 "
+                         "동기화 폴더를 지정하면 드라이브에도 올라간다. (기본: 끔)")
+    bk.add_argument("--backup-interval", type=float, default=10.0, metavar="SEC",
+                    help="백업 확인 주기(초, 기본 10)")
+
     misc = p.add_argument_group("기타")
     misc.add_argument("--no-browser", action="store_true", help="시작할 때 브라우저를 자동으로 열지 않는다")
     misc.add_argument("--verbose", action="store_true", help="자세한 로그")
@@ -201,6 +208,16 @@ def main(argv: list[str] | None = None) -> int:
     WSGIRequestHandler.sys_version = ""
     auction = create_app(cfg)
     auction.manager.gc_images()           # 시작할 때 연결되지 않은 오래된 이미지 정리
+    mirror = None
+    if args.backup_dir:
+        from server.backup import BackupError, BackupMirror
+        try:
+            mirror = BackupMirror(cfg.data_dir, args.backup_dir, args.backup_interval)
+        except BackupError as e:
+            print(f"백업을 시작할 수 없습니다: {e}", file=sys.stderr)
+            return 2
+        mirror.start()
+        print(f" 자동 백업      : {mirror.dest}  ({mirror.interval:g}초마다 확인)")
     auction.start_background()
     print_banner(cfg, scheme, key_generated)
 
@@ -220,6 +237,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"서버를 시작할 수 없습니다: {e}\n(포트 {cfg.port} 가 이미 사용 중이면 --port 로 다른 번호를 지정하세요.)",
               file=sys.stderr)
         return 1
+    if mirror is not None:
+        mirror.stop()
     print("\n서버를 종료합니다. 방 데이터는 data 폴더에 저장되어 있습니다.")
     return 0
 
