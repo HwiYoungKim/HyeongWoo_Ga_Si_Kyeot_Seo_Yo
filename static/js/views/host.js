@@ -5,7 +5,7 @@ import { fmt } from '../lib/format.js';
 import { isRunning } from './common.js';
 import { createPlayerRow } from './player_form.js';
 import { loadMeta, heroName } from '../lib/meta.js';
-import { isLoopbackUrl, defaultShareBase, LOOPBACK_WARNING } from '../lib/net.js';
+import { isLoopbackUrl, defaultShareBase, LOOPBACK_WARNING } from '../lib/share.js';
 import { roleIcon } from './profile.js';
 
 export function mountHost(root, ctx) {

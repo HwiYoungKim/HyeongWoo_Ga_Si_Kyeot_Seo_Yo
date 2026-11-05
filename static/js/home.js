@@ -1,6 +1,6 @@
 // 홈: 방 만들기. 만들어진 접속 링크는 이 화면에서 "한 번만" 보여준다.
 import { h, replace, toast, copyText, $ } from './lib/dom.js';
-import { isLoopbackUrl, defaultShareBase, LOOPBACK_WARNING } from './lib/net.js';
+import { isLoopbackUrl, defaultShareBase, LOOPBACK_WARNING } from './lib/share.js';
 
 const form = $('#create-form');
 const resultBox = $('#result');
