@@ -69,6 +69,7 @@ def start_quick_tunnel(port: int, *, timeout: float = 45.0, binary: str | None =
 
 
 def stop_tunnel(proc: subprocess.Popen) -> None:
+    proc._auction_stopping = True            # 정상 종료이므로 감시 스레드가 경고를 내지 않게 한다
     if proc.poll() is None:
         try:
             proc.terminate()
@@ -78,3 +79,18 @@ def stop_tunnel(proc: subprocess.Popen) -> None:
                 proc.kill()
             except Exception:
                 pass
+
+
+def watch_tunnel(proc: subprocess.Popen, printer=print) -> threading.Thread:
+    """터널 프로세스가 중간에 종료되면 바로 알린다 (그 순간부터 외부 주소는 열리지 않는다)."""
+    def work() -> None:
+        code = proc.wait()
+        if getattr(proc, "_auction_stopping", False):
+            return
+        printer("\n[경고] 외부 접속용 터널(cloudflared)이 종료되었습니다 (코드 %s).\n"
+                "       지금부터 외부에서는 접속할 수 없습니다. 서버를 다시 켜면 새 주소가 만들어집니다.\n"
+                "       (이미 나눠 준 링크는 주소 부분만 새 주소로 바꾸면 그대로 쓸 수 있습니다.)" % code)
+
+    t = threading.Thread(target=work, name="tunnel-watch", daemon=True)
+    t.start()
+    return t

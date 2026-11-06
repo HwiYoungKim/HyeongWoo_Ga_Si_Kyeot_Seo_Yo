@@ -118,6 +118,29 @@ python app.py --backup-dir ~/GoogleDrive/auction-backup     # 예: macOS/Linux
 - **입장/퇴장 알림 묶음 전송**: 30명이 동시에 들어와도 전체 상태 전송은 한두 번.
 - 속도가 느리다면 먼저 `--tunnel-protocol http2` 를 써 보세요. 가장 큰 변수는 PC의 업로드 속도와 터널 구간입니다.
 
+## 외부 주소가 안 열릴 때
+
+| 화면/증상 | 뜻 | 해결 |
+|---|---|---|
+| `DNS_PROBE_FINISHED_NXDOMAIN` | 그 주소가 **존재하지 않음**. 터널이 꺼졌거나, 서버를 다시 켜서 **주소가 바뀜** (빠른 터널 주소는 켤 때마다 새로 만들어집니다) | 서버를 다시 켜고 이번에 출력된 **새 주소**를 쓰세요. 이미 나눠 준 링크는 `https://○○○.trycloudflare.com` 부분만 새 주소로 바꾸면 `/r/…#t=…` 뒤쪽은 그대로 씁니다 |
+| 이 PC 에서만 안 열림 | 이 PC/망의 DNS 문제 | DNS 를 1.1.1.1 / 8.8.8.8 로 변경, `ipconfig /flushdns` |
+| 502 / 1033 / 530 | 터널은 있으나 서버가 꺼졌거나 터널이 끊김 | `app.py` 창 확인, 서버 재시작 |
+| 429 | 터널 동시 처리 한도(200건) 초과 | 잠시 후 재시도 |
+
+- 서버를 `--tunnel` 로 켜면 시작 직후 **자가 점검 + 원인 진단**이 자동 출력되고, 도중에 터널이 죽으면 `[경고]` 가 바로 표시됩니다.
+- 직접 진단: `python netcheck.py https://xxxx.trycloudflare.com` (서버 PC 와 접속 안 되는 PC 양쪽에서 실행해 비교)
+- 이 서버는 **외부 유료/무료 API 를 쓰지 않습니다.** Cloudflare 빠른 터널에는 사용량 한도가 없고(동시 200건·SSE 미지원·가동 보장 없음만 제한), 주소가 매번 바뀌는 것이 가장 큰 불편입니다.
+
+### 주소가 바뀌지 않게 하려면 (무료): Tailscale Funnel
+
+터널이 자주 끊기거나 주소가 바뀌는 게 불편하면 고정 주소(`https://내PC.tailnet이름.ts.net`)를 쓸 수 있습니다. 참가자는 Tailscale 을 설치하지 않아도 됩니다.
+
+1. PC 에 Tailscale 설치·로그인 (개인 무료 플랜)
+2. 처음 한 번, 명령 프롬프트에서 `tailscale funnel 5000` 실행 → 안내되는 링크에서 Funnel 사용을 승인
+3. 서버 실행: `python app.py --public-url https://내PC.tailnet이름.ts.net --trust-proxy --backup-dir "..."`
+
+(Funnel 은 443/8443/10000 포트만 쓸 수 있으며, 같은 PC 에서 `tailscale funnel 5000` 을 켜 둔 상태여야 합니다.)
+
 ## 보안 설계
 
 선수 신상 정보(이름·배틀태그·포지션·영웅·Elo·소개·이미지)가 들어가므로 다음을 적용했습니다.

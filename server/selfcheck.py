@@ -41,9 +41,13 @@ def run_in_background(url: str, *, attempts: int = 8, delay: float = 4.0, printe
                 return
             last = detail
             time.sleep(delay)
-        printer(f"[경고] 외부 주소로 접속하지 못했습니다: {url}\n       사유: {last}\n"
-                "       - 터널 창이 켜져 있는지, 주소가 이번에 받은 것인지 확인하세요.\n"
-                "       - 이 PC 에서도 안 열리면 DNS 를 1.1.1.1 / 8.8.8.8 로 바꿔 보세요.")
+        printer(f"[경고] 외부 주소로 접속하지 못했습니다: {url}\n       사유: {last}\n       원인을 분석합니다…")
+        try:
+            from . import netdiag
+            netdiag.run(url, printer=lambda m: printer("       " + m if m else ""))
+        except Exception as e:                       # 진단 자체가 실패해도 서버에는 영향이 없어야 한다
+            printer(f"       (자동 진단 실패: {type(e).__name__}: {e})")
+        printer("       다시 진단하려면:  python netcheck.py " + url)
 
     t = threading.Thread(target=work, name="selfcheck", daemon=True)
     t.start()

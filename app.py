@@ -196,10 +196,11 @@ def main(argv: list[str] | None = None) -> int:
     public_url = args.public_url
     tunnel_proc = None
     if args.tunnel:
-        from server.tunnel import TunnelError, start_quick_tunnel
+        from server.tunnel import TunnelError, start_quick_tunnel, watch_tunnel
         print("외부 접속용 터널을 켜는 중입니다… (최대 45초)")
         try:
             tunnel_proc, public_url = start_quick_tunnel(args.port, protocol=args.tunnel_protocol)
+            watch_tunnel(tunnel_proc)
         except TunnelError as e:
             print(f"터널을 켤 수 없습니다: {e}", file=sys.stderr)
             return 2
