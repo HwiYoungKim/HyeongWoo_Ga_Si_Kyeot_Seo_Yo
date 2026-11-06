@@ -432,7 +432,7 @@ def test_old_saved_room_and_roster_files_are_migrated(tmp_path):
 
 def test_multi_role_player_visible_to_everyone_and_in_unsold_list(env):
     created, host, leaders, obs = setup_room(env)
-    players = players_payload(6)
+    players = players_payload(6, prefix="다중")          # setup_room 이 만든 선수와 이름이 겹치지 않게
     players[0].update(roles=["tank", "damage", "support"])
     assert host.emit("host_setup", {"players": players}, callback=True)["ok"]
     listed = {p["name"]: p for p in host.emit("host_roster_list", {}, callback=True)["players"]}
