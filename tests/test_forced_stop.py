@@ -102,7 +102,7 @@ def test_unsold_list_is_public_even_in_blind_mode(env):
     for who in (obs, leaders[0], host):
         lst = snap(who)["queue"]["unsold_players"]
         assert [p["name"] for p in lst] == [first["name"]]
-        assert set(lst[0]) == {"id", "name", "role", "round"} and lst[0]["round"] == "retry"
+        assert set(lst[0]) == {"id", "name", "roles", "round"} and lst[0]["round"] == "retry"
     # 대기 중인 다른 선수의 이름은 여전히 공개 화면에 없다 (BLIND)
     import json
     text = json.dumps(snap(obs))

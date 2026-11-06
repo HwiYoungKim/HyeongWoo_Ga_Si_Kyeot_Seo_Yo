@@ -111,14 +111,14 @@ def test_player_entries_require_role_and_reject_duplicates():
     with pytest.raises(ValidationError):
         parse_player_entries([entry(1, uid="NOT-HEX")])
     out = parse_player_entries([entry(1, battletag="Abc#1234", heroes=["tracer"])])
-    assert out[0]["uid"] == "" and out[0]["role"] == "tank"
+    assert out[0]["uid"] == "" and out[0]["roles"] == ["tank"]
 
 
 def test_player_from_dict_tolerates_old_and_extra_keys():
     old = {"id": 0, "name": "옛선수", "position": "MID", "elo": 1, "intro": "", "winning_bid": 0,
            "assigned_team_id": -1, "future_field": 1}
     p = Player.from_dict(old)
-    assert p.name == "옛선수" and p.role == "" and p.images == [] and p.heroes == []
+    assert p.name == "옛선수" and p.roles == [] and p.images == [] and p.heroes == []
 
 
 # =============================================================================
@@ -266,11 +266,12 @@ def test_setup_saves_profile_fields_and_exposes_them(env):
     rid, tok = created["room_id"], created["tokens"]
     iid = upload(env, rid, tok["host"]).get_json()["id"]
     players = players_payload(6)
-    players[0].update(battletag="Hero#1234", role="support", heroes=["mercy", "ana"], images=[iid])
-    players[1].update(role="tank")
+    players[0].update(battletag="Hero#1234", roles=["support"], heroes=["mercy", "ana"], images=[iid])
+    players[1].update(roles=["tank", "support"])
     assert host.emit("host_setup", {"players": players}, callback=True)["ok"]
     hv = snap(host)["players"][0]
-    assert hv["battletag"] == "Hero#1234" and hv["role"] == "support"
+    assert hv["battletag"] == "Hero#1234" and hv["roles"] == ["support"]
+    assert snap(host)["players"][1]["roles"] == ["tank", "support"]
     assert hv["heroes"] == ["mercy", "ana"] and hv["images"] == [iid] and len(hv["uid"]) == 16
     assert "position" not in hv
 
@@ -320,7 +321,7 @@ def test_roster_load_into_new_room_keeps_uid(env):
     assert {p["uid"] for p in roster} == uid_before
 
     # 명부의 선수를 그대로 다시 저장하면 같은 uid 로 갱신된다 (중복 생성 안 됨)
-    players = [{k: p[k] for k in ("uid", "name", "battletag", "role", "heroes", "images", "elo", "intro")}
+    players = [{k: p[k] for k in ("uid", "name", "battletag", "roles", "heroes", "images", "elo", "intro")}
                for p in roster]
     players[0]["name"] = "이름수정"
     assert host.emit("host_setup", {"players": players}, callback=True)["ok"]
@@ -391,3 +392,48 @@ def test_started_room_cannot_change_players(env):
     created, host, *_ = setup_room(env)
     assert host.emit("host_start", {}, callback=True)["ok"]
     assert not host.emit("host_setup", {"players": players_payload(6)}, callback=True)["ok"]
+
+
+# =============================================================================
+# 포지션 중복 선택 (탱커/딜러/힐러 중 1개 이상)
+# =============================================================================
+
+def test_roles_accept_multiple_and_normalize_order():
+    out = parse_player_entries([entry(1, roles=["support", "tank"])])
+    assert out[0]["roles"] == ["tank", "support"]                       # 항상 탱커→딜러→힐러 순
+    out = parse_player_entries([entry(1, roles=["damage", "damage", "tank"])])
+    assert out[0]["roles"] == ["tank", "damage"]                        # 중복은 하나로
+    out = parse_player_entries([{k: v for k, v in entry(1).items() if k != "roles"} | {"role": "support"}])
+    assert out[0]["roles"] == ["support"]                               # 예전 형식(role 문자열)도 받는다
+
+
+@pytest.mark.parametrize("bad", [[], "", None, ["mid"], ["tank", "mid"], [1], "mid", {"tank": 1}, ["tank"] * 4])
+def test_roles_reject_empty_and_unknown(bad):
+    with pytest.raises(ValidationError):
+        parse_player_entries([entry(1, roles=bad)])
+
+
+def test_old_saved_room_and_roster_files_are_migrated(tmp_path):
+    import json
+    from server.manager import RoomManager
+    from server.roster import RosterStore
+    from server.storage import RoomStore
+
+    old_player = {"id": 0, "name": "옛선수", "role": "support", "elo": 1, "intro": "", "winning_bid": 0, "assigned_team_id": -1}
+    assert Player.from_dict(old_player).roles == ["support"]
+    assert Player.from_dict({**old_player, "role": "mid"}).roles == []
+
+    uid = "a" * 16
+    (tmp_path / "roster.json").write_text(json.dumps({"version": 1, "players": {uid: {"name": "옛", "battletag": "", "role": "tank",
+                                                                                     "heroes": [], "images": [], "elo": None, "intro": ""}}}))
+    got = RosterStore(tmp_path).get(uid)
+    assert got["roles"] == ["tank"] and "role" not in got
+
+
+def test_multi_role_player_visible_to_everyone_and_in_unsold_list(env):
+    created, host, leaders, obs = setup_room(env)
+    players = players_payload(6)
+    players[0].update(roles=["tank", "damage", "support"])
+    assert host.emit("host_setup", {"players": players}, callback=True)["ok"]
+    listed = {p["name"]: p for p in host.emit("host_roster_list", {}, callback=True)["players"]}
+    assert listed[players[0]["name"]]["roles"] == ["tank", "damage", "support"]

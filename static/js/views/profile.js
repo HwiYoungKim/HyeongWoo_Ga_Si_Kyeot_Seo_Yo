@@ -1,7 +1,7 @@
 // 선수 프로필 조각: 포지션 아이콘, 배틀태그, 영웅 칩, 이미지 갤러리.
 // 경매 화면(모든 역할)과 주최자 등록 화면이 같이 쓴다. 모든 문자열은 textContent 로 들어간다.
 import { h } from '../lib/dom.js';
-import { ROLE_NAME, heroName } from '../lib/meta.js';
+import { ROLE_NAME, heroName, rolesOf, rolesText } from '../lib/meta.js';
 import { imageUrl } from '../lib/images.js';
 
 export function roleIcon(role, { lit = true, small = false } = {}) {
@@ -12,6 +12,11 @@ export function roleIcon(role, { lit = true, small = false } = {}) {
   });
 }
 
+// 포지션 아이콘들 (여러 개를 고른 선수는 아이콘이 모두 켜진다)
+export function roleIcons(p, opts = { small: true }) {
+  return rolesOf(p).map((r) => roleIcon(r, opts));
+}
+
 export function heroChips(ids) {
   return (ids || []).map((id) => h('span', { class: 'chip chip-hero', text: heroName(id) }));
 }
@@ -19,7 +24,7 @@ export function heroChips(ids) {
 // 경매 중인 매물 카드에 들어가는 프로필 줄
 export function profileLine(p) {
   return h('div', { class: 'profile-line' },
-    p.role ? h('span', { class: 'role-tag' }, roleIcon(p.role), h('span', { text: ROLE_NAME[p.role] })) : null,
+    rolesOf(p).length ? h('span', { class: 'role-tag' }, roleIcons(p, {}), h('span', { text: rolesText(p) })) : null,
     p.battletag ? h('span', { class: 'chip chip-tag', text: p.battletag }) : null,
     p.elo !== null && p.elo !== undefined ? h('span', { class: 'chip', text: `Elo ${p.elo}` }) : null,
   );

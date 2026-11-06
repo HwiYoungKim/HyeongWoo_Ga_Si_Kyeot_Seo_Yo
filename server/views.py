@@ -23,17 +23,17 @@ from .models import AuctionState, Player, Room
 def _player_card(p: Player) -> dict[str, Any]:
     """현재 경매 중인 매물: 전체 정보."""
     return {
-        "id": p.id, "name": p.name, "battletag": p.battletag, "role": p.role,
+        "id": p.id, "name": p.name, "battletag": p.battletag, "roles": list(p.roles),
         "heroes": list(p.heroes), "images": list(p.images), "elo": p.elo, "intro": p.intro,
     }
 
 
 def _player_brief(p: Player) -> dict[str, Any]:
-    return {"id": p.id, "name": p.name, "role": p.role}
+    return {"id": p.id, "name": p.name, "roles": list(p.roles)}
 
 
 def _roster_entry(p: Player) -> dict[str, Any]:
-    return {"id": p.id, "name": p.name, "role": p.role, "elo": p.elo,
+    return {"id": p.id, "name": p.name, "roles": list(p.roles), "elo": p.elo,
             "winning_bid": p.winning_bid}
 
 

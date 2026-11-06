@@ -208,13 +208,20 @@ def apply_teams(room: Room, entries: list[dict[str, Any]]) -> None:
     _touch(room)
 
 
+def _entry_roles(e: dict[str, Any]) -> list[str]:
+    roles = e.get("roles")
+    if roles is None and e.get("role"):               # 예전 형식 호환
+        roles = [e["role"]]
+    return list(roles or [])
+
+
 def apply_players(room: Room, entries: list[dict[str, Any]]) -> None:
     _require_state(room, AuctionState.WAITING)
     players = []
     for i, e in enumerate(entries):
         players.append(Player(
             id=i, name=e["name"], uid=e.get("uid") or secrets.token_hex(8),
-            battletag=e.get("battletag", ""), role=e.get("role", ""),
+            battletag=e.get("battletag", ""), roles=_entry_roles(e),
             heroes=list(e.get("heroes", [])), images=list(e.get("images", [])),
             elo=e.get("elo"), intro=e.get("intro", ""),
         ))

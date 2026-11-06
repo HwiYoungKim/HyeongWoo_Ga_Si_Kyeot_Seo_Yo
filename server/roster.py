@@ -21,11 +21,11 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from . import config
-from .validators import is_valid_uid
+from .validators import is_valid_uid, legacy_roles
 
 log = logging.getLogger("auction.roster")
 
-_PROFILE_KEYS = ("name", "battletag", "role", "heroes", "images", "elo", "intro")
+_PROFILE_KEYS = ("name", "battletag", "roles", "heroes", "images", "elo", "intro")
 
 
 def new_uid() -> str:
@@ -51,6 +51,10 @@ class RosterStore:
             players = data.get("players", {})
             if isinstance(players, dict):
                 self._players = {k: v for k, v in players.items() if is_valid_uid(k) and isinstance(v, dict)}
+                for profile in self._players.values():      # 포지션이 하나뿐이던 시절의 명부를 roles 로 옮긴다
+                    if "roles" not in profile:
+                        profile["roles"] = legacy_roles(profile.get("role"))
+                    profile.pop("role", None)
         except (OSError, ValueError):
             log.warning("선수 명부 파일을 읽을 수 없습니다. 원본은 건드리지 않고 비어 있는 것으로 시작합니다.")
             # 손상된 파일을 덮어써서 잃지 않도록 옆에 보관해 둔다.

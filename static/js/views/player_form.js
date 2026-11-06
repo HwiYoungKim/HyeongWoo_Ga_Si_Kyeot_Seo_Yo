@@ -4,7 +4,7 @@
 //  - 영웅: 최대 5개 (검색 + 역할별 목록)
 //  - 이미지: 0~2장 (0장이면 "이미지 없음" 표시)
 import { h, replace, toast } from '../lib/dom.js';
-import { ROLE_NAME, ROLES, heroList, playerLimits } from '../lib/meta.js';
+import { ROLE_NAME, ROLES, heroList, playerLimits, rolesOf } from '../lib/meta.js';
 import { imageUrl, uploadImage } from '../lib/images.js';
 import { roleIcon } from './profile.js';
 
@@ -12,7 +12,7 @@ export function createPlayerRow({ data = {}, conn, onChange, onRemove }) {
   const limits = playerLimits();
   const state = {
     uid: data.uid ?? '',
-    role: ROLE_NAME[data.role] ? data.role : '',
+    roles: rolesOf(data),
     heroes: [...(data.heroes ?? [])],
     images: [...(data.images ?? [])],
   };
@@ -24,20 +24,23 @@ export function createPlayerRow({ data = {}, conn, onChange, onRemove }) {
 
   const changed = () => onChange && onChange();
 
-  // ------------------------------------------------------------ 포지션 (하나만 점등)
+  // ------------------------------------------------------------ 포지션 (눌러서 켜고 끔 · 여러 개 선택 가능 · 최소 1개)
   const roleButtons = ROLES.map((role) => h('button', {
-    type: 'button', class: `role-btn role-btn-${role}`, 'aria-pressed': 'false', title: ROLE_NAME[role],
-    onClick: () => { state.role = role; paintRole(); changed(); },
+    type: 'button', class: `role-btn role-btn-${role}`, 'aria-pressed': 'false', title: `${ROLE_NAME[role]} (다시 누르면 해제)`,
+    onClick: () => {
+      state.roles = state.roles.includes(role) ? state.roles.filter((r) => r !== role) : ROLES.filter((r) => r === role || state.roles.includes(r));
+      paintRole(); changed();
+    },
   }, roleIcon(role, { lit: false }), h('span', { text: ROLE_NAME[role] })));
   const roleBox = h('div', { class: 'role-select', role: 'group', 'aria-label': '포지션' }, roleButtons);
   function paintRole() {
     ROLES.forEach((role, i) => {
-      const on = state.role === role;
+      const on = state.roles.includes(role);
       roleButtons[i].classList.toggle('lit', on);
       roleButtons[i].setAttribute('aria-pressed', String(on));
       roleButtons[i].querySelector('img').classList.toggle('lit', on);
     });
-    roleBox.classList.toggle('unset', !state.role);
+    roleBox.classList.toggle('unset', state.roles.length === 0);
   }
 
   // ------------------------------------------------------------ 영웅 (최대 5개)
@@ -150,13 +153,13 @@ export function createPlayerRow({ data = {}, conn, onChange, onRemove }) {
     nameInput: name,
     get uid() { return state.uid; },
     hasName: () => name.value.trim() !== '',
-    hasRole: () => state.role !== '',
+    hasRole: () => state.roles.length > 0,
     refreshHeroes: buildHeroChips,       // 영웅 목록을 나중에 불러온 경우 다시 그린다
     getValue: () => ({
       uid: state.uid,
       name: name.value,
       battletag: battletag.value,
-      role: state.role,
+      roles: [...state.roles],
       heroes: [...state.heroes],
       images: [...state.images],
       elo: elo.value === '' ? null : Number(elo.value),

@@ -182,10 +182,27 @@ def parse_battletag(value: Any, *, field: str = "배틀태그") -> str:
     return text
 
 
-def parse_role(value: Any, *, field: str = "포지션") -> str:
-    if value not in heroes.ROLES:
+def parse_roles(entry: dict[str, Any], *, field: str = "포지션") -> list[str]:
+    """포지션은 탱커/딜러/힐러 중 1개 이상(중복 선택 가능). 항상 탱커→딜러→힐러 순서로 정규화한다.
+
+    예전 형식(`role`: 문자열 하나)도 받아 준다.
+    """
+    raw = entry.get("roles") if "roles" in entry else entry.get("role")
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, list) or not raw or len(raw) > len(heroes.ROLES):
+        raise ValidationError(f"{field}을(를) 탱커/딜러/힐러 중에서 1개 이상 선택해 주세요.")
+    if any(not isinstance(r, str) or r not in heroes.ROLES for r in raw):
         raise ValidationError(f"{field}을(를) 탱커/딜러/힐러 중에서 선택해 주세요.")
-    return value
+    chosen = set(raw)
+    return [r for r in heroes.ROLES if r in chosen]
+
+
+def legacy_roles(value: Any) -> list[str]:
+    """저장된 옛 데이터(role 문자열)를 roles 목록으로 바꾼다. 알 수 없는 값은 빈 목록."""
+    if isinstance(value, str) and value in heroes.ROLES:
+        return [value]
+    return []
 
 
 def parse_hero_ids(value: Any, *, field: str = "영웅") -> list[str]:
@@ -261,7 +278,7 @@ def parse_player_entries(entries: Any) -> list[dict[str, Any]]:
             "name": clean_text(entry.get("name"), config.NAME_LEN,
                                field=f"{i}번 매물 이름", required=True),
             "battletag": battletag,
-            "role": parse_role(entry.get("role"), field=f"{i}번 매물 포지션"),
+            "roles": parse_roles(entry, field=f"{i}번 매물 포지션"),
             "heroes": parse_hero_ids(entry.get("heroes"), field=f"{i}번 매물 영웅"),
             "images": parse_image_ids(entry.get("images"), field=f"{i}번 매물 이미지"),
             "elo": elo,

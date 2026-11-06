@@ -413,7 +413,7 @@ def test_public_order_mode_shows_names_but_not_intro_or_elo(env):
     pub = last_state(obs)
     assert len(pub["queue"]["upcoming"]) == 5
     for item in pub["queue"]["upcoming"]:
-        assert set(item) == {"id", "name", "role"}
+        assert set(item) == {"id", "name", "roles"}
 
 
 def test_no_token_material_in_any_snapshot(env):

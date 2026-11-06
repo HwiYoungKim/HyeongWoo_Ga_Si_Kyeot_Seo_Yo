@@ -2,8 +2,8 @@
 // 서버가 내려준 값만 그리며, 모든 문자열은 textContent 로 들어간다.
 import { h, replace } from '../lib/dom.js';
 import { fmt, activityText, teamName, STATE_LABEL } from '../lib/format.js';
-import { ROLE_NAME } from '../lib/meta.js';
-import { roleIcon, heroChips, profileLine, gallery } from './profile.js';
+import { rolesText } from '../lib/meta.js';
+import { roleIcons, heroChips, profileLine, gallery } from './profile.js';
 
 const RUNNING = new Set(['MAIN_AUCTION', 'UNSOLD_AUCTION']);
 export const isRunning = (state) => RUNNING.has(state.state) && state.lot;
@@ -105,7 +105,7 @@ export function renderTeams(box, state, ctx) {
           h('ul', { class: 'roster' },
             t.roster.map((p) => h('li', {},
               h('span', { text: p.name }),
-              p.role ? roleIcon(p.role, { small: true }) : null,
+              ...roleIcons(p),
               h('span', { class: 'sub', text: `${fmt(p.winning_bid)}P` }),
             ))),
         );
@@ -130,7 +130,7 @@ export function renderQueue(box, state) {
       ? h('div', {},
           h('h3', { text: '경매 순서 (공개)' }),
           h('ol', { class: 'upcoming' },
-            q.upcoming.map((p) => h('li', { text: p.role ? `${p.name} · ${ROLE_NAME[p.role]}` : p.name }))))
+            q.upcoming.map((p) => h('li', { text: rolesText(p) ? `${p.name} · ${rolesText(p)}` : p.name }))))
       : (registered ? null : h('p', { class: 'sub', text: '경매 순서는 비공개입니다.' })),
     registered ? null : renderUnsoldList(q.unsold_players || []),
   );
@@ -142,7 +142,7 @@ function renderUnsoldList(list) {
     h('h3', { text: `유찰자 목록 (${list.length}명)` }),
     list.length
       ? h('ul', { class: 'unsold-list' }, list.map((p) => h('li', {},
-          p.role ? roleIcon(p.role, { small: true }) : null,
+          ...roleIcons(p),
           h('span', { text: p.name }),
           h('span', { class: 'chip chip-sm chip-muted', text: p.round === 'leftover' ? '재경매 유찰' : '재경매 대기' }))))
       : h('p', { class: 'sub', text: '유찰된 선수가 없습니다.' }));

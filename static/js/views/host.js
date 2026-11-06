@@ -6,7 +6,7 @@ import { isRunning } from './common.js';
 import { createPlayerRow } from './player_form.js';
 import { loadMeta, heroName } from '../lib/meta.js';
 import { isLoopbackUrl, defaultShareBase, LOOPBACK_WARNING } from '../lib/share.js';
-import { roleIcon } from './profile.js';
+import { roleIcons } from './profile.js';
 
 export function mountHost(root, ctx) {
   const { conn } = ctx;
@@ -170,7 +170,7 @@ export function mountHost(root, ctx) {
               if (res.ok) { roster = res.players; paintRoster(); toast('명부에서 삭제했습니다.', 'ok'); }
             } });
           return h('div', { class: 'roster-item' },
-            roleIcon(p.role, { small: true }),
+            ...roleIcons(p),
             h('strong', { text: p.name }),
             p.battletag ? h('span', { class: 'chip chip-tag', text: p.battletag }) : null,
             h('span', { class: 'sub', text: (p.heroes || []).map(heroName).join(', ') }),
