@@ -85,7 +85,7 @@ def _fake_exe(tmp_path, body):
 
 
 def test_tunnel_watch_warns_when_process_dies(tmp_path):
-    exe = _fake_exe(tmp_path, "print('https://a-b.trycloudflare.com', flush=True)\ntime.sleep(1.2)\nsys.exit(7)")
+    exe = _fake_exe(tmp_path, "print('https://a-b.trycloudflare.com', flush=True)\nprint('INF Registered tunnel connection connIndex=0', flush=True)\ntime.sleep(1.2)\nsys.exit(7)")
     proc, _ = tunnel.start_quick_tunnel(5000, binary=exe, timeout=10)
     lines = []
     tunnel.watch_tunnel(proc, printer=lines.append).join(8)
@@ -93,7 +93,7 @@ def test_tunnel_watch_warns_when_process_dies(tmp_path):
 
 
 def test_tunnel_watch_is_silent_on_normal_stop(tmp_path):
-    exe = _fake_exe(tmp_path, "print('https://a-b.trycloudflare.com', flush=True)\ntime.sleep(30)")
+    exe = _fake_exe(tmp_path, "print('https://a-b.trycloudflare.com', flush=True)\nprint('INF Registered tunnel connection connIndex=0', flush=True)\ntime.sleep(30)")
     proc, _ = tunnel.start_quick_tunnel(5000, binary=exe, timeout=10)
     lines = []
     t = tunnel.watch_tunnel(proc, printer=lines.append)

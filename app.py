@@ -196,11 +196,23 @@ def main(argv: list[str] | None = None) -> int:
     public_url = args.public_url
     tunnel_proc = None
     if args.tunnel:
-        from server.tunnel import TunnelError, start_quick_tunnel, watch_tunnel
-        print("외부 접속용 터널을 켜는 중입니다… (최대 45초)")
+        from server.tunnel import (TunnelError, start_quick_tunnel, tunnel_connected, tunnel_log_tail,
+                                   watch_tunnel)
+        print("외부 접속용 터널을 켜는 중입니다… (연결 확인까지 최대 1분)")
         try:
             tunnel_proc, public_url = start_quick_tunnel(args.port, protocol=args.tunnel_protocol)
             watch_tunnel(tunnel_proc)
+            if not tunnel_connected(tunnel_proc):
+                print(
+                    "\n[경고] cloudflared 가 주소는 받았지만 Cloudflare 에 연결하지 못했습니다.\n"
+                    "       이 상태에서는 외부 주소가 열리지 않습니다 (브라우저에 NXDOMAIN / 'getaddrinfo failed').\n"
+                    "       원인은 대부분 이 PC/네트워크의 DNS 또는 방화벽(UDP·TCP 7844 차단, 학교·공용 와이파이)입니다.\n"
+                    "       ① DNS 를 1.1.1.1 / 8.8.8.8 로 바꾸고  ipconfig /flushdns  후 서버를 다시 켜기\n"
+                    "       ② 휴대폰 핫스팟으로 PC 를 연결해 다시 시도해 보기 (학교망이면 거의 이것으로 해결)\n"
+                    "       ③ 그래도 안 되면 README 의 Tailscale Funnel 방법 사용\n"
+                    "       --- cloudflared 마지막 로그 ---", file=sys.stderr)
+                for line in tunnel_log_tail(tunnel_proc):
+                    print("       " + line, file=sys.stderr)
         except TunnelError as e:
             print(f"터널을 켤 수 없습니다: {e}", file=sys.stderr)
             return 2
@@ -235,6 +247,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f" 자동 백업      : {mirror.dest}  ({mirror.interval:g}초마다 확인)")
     auction.start_background()
     print_banner(cfg, scheme, key_generated)
+    if tunnel_proc is not None and not tunnel_connected(tunnel_proc):
+        print(" ※ 위 '외부 공개 주소'는 아직 Cloudflare 에 연결되지 않아 열리지 않습니다. (위의 [경고] 참고)\n"
+              "   이 PC 안에서는 '내 PC에서 열기' 주소로 정상 사용할 수 있습니다.\n")
     if public_url:
         from server.selfcheck import run_in_background
         run_in_background(public_url)

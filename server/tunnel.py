@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import threading
 import time
+from collections import deque
 
 URL_RE = re.compile(r"https://[a-z0-9][a-z0-9-]*\.trycloudflare\.com", re.IGNORECASE)
 
@@ -27,13 +28,11 @@ def find_url(text: str) -> str | None:
     return m.group(0).lower() if m else None
 
 
-def start_quick_tunnel(port: int, *, timeout: float = 45.0, binary: str | None = None,
-                       protocol: str = "auto") -> tuple[subprocess.Popen, str]:
-    exe = binary or shutil.which("cloudflared")
-    if not exe:
-        raise TunnelError(
-            "cloudflared 를 찾을 수 없습니다. 설치: winget install --id Cloudflare.cloudflared "
-            "(설치 후 cmd 를 닫았다가 새로 여세요)")
+CONNECTED_RE = re.compile(r"Registered tunnel connection", re.IGNORECASE)
+
+
+def _launch(exe: str, port: int, protocol: str) -> subprocess.Popen:
+    """cloudflared 를 띄우고, 출력에서 주소(url_event)와 '실제 연결 성공'(connected)을 감지한다."""
     cmd = [exe, "tunnel", "--url", f"http://127.0.0.1:{port}", "--no-autoupdate"]
     if protocol in ("quic", "http2"):
         cmd += ["--protocol", protocol]         # 학교/공용망에서 UDP(quic)가 막혀 느릴 때 http2 로 바꿔 본다
@@ -42,30 +41,76 @@ def start_quick_tunnel(port: int, *, timeout: float = 45.0, binary: str | None =
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
     )
     atexit.register(stop_tunnel, proc)
-    found: list[str] = []
-    tail: list[str] = []
-    done = threading.Event()
+    proc.auction_url = []                       # type: ignore[attr-defined]
+    proc.auction_log = deque(maxlen=60)         # type: ignore[attr-defined]
+    proc.auction_url_event = threading.Event()  # type: ignore[attr-defined]
+    proc.auction_connected = threading.Event()  # type: ignore[attr-defined]
 
     def reader() -> None:
         assert proc.stdout is not None
         for line in proc.stdout:               # 끝까지 읽어서 파이프가 막히지 않게 한다
-            tail.append(line.strip())
-            del tail[:-8]
-            if not found:
+            line = line.strip()
+            proc.auction_log.append(line)
+            if not proc.auction_url:
                 url = find_url(line)
                 if url:
-                    found.append(url)
-                    done.set()
-        done.set()
+                    proc.auction_url.append(url)
+                    proc.auction_url_event.set()
+            if CONNECTED_RE.search(line):
+                proc.auction_connected.set()
+        proc.auction_url_event.set()
 
     threading.Thread(target=reader, name="tunnel-reader", daemon=True).start()
+    return proc
+
+
+def _wait_url(proc: subprocess.Popen, timeout: float) -> str | None:
     deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline and not found and proc.poll() is None:
-        done.wait(0.3)
-    if not found:
+    while time.monotonic() < deadline and not proc.auction_url and proc.poll() is None:
+        proc.auction_url_event.wait(0.3)
+    return proc.auction_url[0] if proc.auction_url else None
+
+
+def start_quick_tunnel(port: int, *, timeout: float = 45.0, binary: str | None = None,
+                       protocol: str = "auto", connect_timeout: float = 25.0,
+                       retry_http2: bool = True) -> tuple[subprocess.Popen, str]:
+    """터널을 켜고 (프로세스, 주소)를 돌려준다.
+
+    cloudflared 는 주소를 먼저 발급받아 출력하고 Cloudflare 와의 실제 연결은 그 뒤에 맺는다.
+    네트워크(DNS/방화벽)가 막혀 있으면 주소만 있고 연결이 없어서 그 주소가 열리지 않는다(NXDOMAIN).
+    그래서 "Registered tunnel connection" 이 보일 때까지 기다리고, 안 되면 http2 로 한 번 더 시도한다.
+    연결 여부는 tunnel_connected(proc) 로 확인한다.
+    """
+    exe = binary or shutil.which("cloudflared")
+    if not exe:
+        raise TunnelError(
+            "cloudflared 를 찾을 수 없습니다. 설치: winget install --id Cloudflare.cloudflared "
+            "(설치 후 cmd 를 닫았다가 새로 여세요)")
+    proc = _launch(exe, port, protocol)
+    url = _wait_url(proc, timeout)
+    if not url:
+        tail = list(proc.auction_log)[-6:]
         stop_tunnel(proc)
-        raise TunnelError("터널 주소를 받지 못했습니다. cloudflared 출력:\n  " + "\n  ".join(tail[-5:]))
-    return proc, found[0]
+        raise TunnelError("터널 주소를 받지 못했습니다. cloudflared 출력:\n  " + "\n  ".join(tail))
+    if not proc.auction_connected.wait(connect_timeout) and protocol == "auto" and retry_http2 and proc.poll() is None:
+        stop_tunnel(proc)                       # 기본 방식(quic/UDP)이 안 붙음 → TCP(http2) 로 재시도
+        second = _launch(exe, port, "http2")
+        second_url = _wait_url(second, timeout)
+        if second_url:
+            second.auction_connected.wait(connect_timeout)
+            second.auction_first_attempt = list(proc.auction_log)   # type: ignore[attr-defined]
+            return second, second_url
+        stop_tunnel(second)
+        raise TunnelError("터널 주소를 받지 못했습니다. cloudflared 출력:\n  " + "\n  ".join(list(second.auction_log)[-6:]))
+    return proc, url
+
+
+def tunnel_connected(proc: subprocess.Popen) -> bool:
+    return bool(getattr(proc, "auction_connected", None) and proc.auction_connected.is_set())
+
+
+def tunnel_log_tail(proc: subprocess.Popen, n: int = 12) -> list[str]:
+    return list(getattr(proc, "auction_log", []))[-n:]
 
 
 def stop_tunnel(proc: subprocess.Popen) -> None:

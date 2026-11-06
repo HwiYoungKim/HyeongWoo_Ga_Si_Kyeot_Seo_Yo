@@ -146,7 +146,7 @@ def test_tunnel_protocol_flag_is_passed_to_cloudflared(tmp_path):
     out = tmp_path / "args.txt"
     exe = tmp_path / "fake"
     exe.write_text(f"#!{sys.executable}\nimport sys,time\nopen({str(out)!r},'w').write(' '.join(sys.argv[1:]))\n"
-                   "print('https://a-b.trycloudflare.com', flush=True)\ntime.sleep(20)\n")
+                   "print('https://a-b.trycloudflare.com', flush=True)\nprint('INF Registered tunnel connection connIndex=0', flush=True)\ntime.sleep(20)\n")
     exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
     proc, _ = tunnel.start_quick_tunnel(5000, binary=str(exe), timeout=10, protocol="http2")
     try:
