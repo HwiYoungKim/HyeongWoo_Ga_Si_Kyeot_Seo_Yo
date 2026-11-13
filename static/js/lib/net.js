@@ -1,11 +1,16 @@
-// Socket.IO 연결 관리: 자동 재접속 + 재접속 시 자동 재인증 + 상태 버전(rev) 검사 + 타이머 보정.
+// Socket.IO 연결 관리: 자동 재접속 + 재접속 시 자동 재인증 + 변경분(패치) 적용 + 타이머 보정.
 //
 // 끊김 없는 동기화의 핵심
 //  1) 연결이 끊기면 socket.io 가 자동으로 재연결하고, 'connect' 마다 join 을 다시 보내
 //     서버가 현재 전체 상태(스냅샷)를 돌려준다 → 끊겨 있던 동안의 변화를 즉시 따라잡는다.
-//  2) 서버가 1초마다 보내는 timer 메시지의 rev 가 내가 가진 상태의 rev 와 다르면
-//     (= 상태 이벤트를 놓쳤다는 뜻) 즉시 sync 를 요청한다.
-//  3) 남은 시간은 "수신 시각 + 남은 ms" 로 로컬에서 계산하고, 서버 timer 로 계속 보정한다.
+//  2) 그 뒤로 서버는 바뀐 부분만 담은 patch 를 보낸다 (데이터 절약). 상태에는 순번(seq)이 있고
+//     patch 는 "base 번을 seq 번으로 바꾸는 변경분"이다. 내 순번이 base 와 다르면 하나를 놓친 것이므로
+//     sync 로 전체 상태를 다시 받는다. 먼저 도착한 미래의 patch 는 잠시 보관했다가 이어서 적용한다.
+//  3) 서버가 몇 초마다 보내는 timer 메시지의 rev 가 내 상태의 rev 와 다를 때도 sync 를 요청한다.
+//  4) 남은 시간은 "수신 시각 + 남은 ms" 로 로컬에서 계산하고, 서버 timer/patch 로 계속 보정한다.
+import { applyPatch } from './patch.js';
+
+const MAX_PENDING_PATCHES = 64;
 
 export class Connection {
   constructor(roomId, token) {
@@ -20,6 +25,8 @@ export class Connection {
     this.handlers = {};
     this.joined = false;
     this._syncing = false;
+    this._pending = [];     // 아직 적용하지 못한(순번이 앞선) patch
+    this._seqLive = false;  // 지금 가진 상태의 순번이 현재 연결에서 받은 것인가 (재접속하면 순번이 다시 시작될 수 있다)
   }
 
   on(event, fn) {
@@ -48,10 +55,16 @@ export class Connection {
     const s = this.socket;
 
     s.on('connect', () => { this._emit('status', 'joining'); this._join(); });
-    s.on('disconnect', () => { this.joined = false; this._emit('status', 'offline'); });
+    s.on('disconnect', () => {
+      this.joined = false;
+      this._pending = [];
+      this._seqLive = false;
+      this._emit('status', 'offline');
+    });
     s.on('connect_error', () => this._emit('status', 'offline'));
 
     s.on('state', (state) => this._applyState(state, false));
+    s.on('patch', (m) => this._onPatch(m));
     s.on('timer', (t) => this._onTimer(t));
     s.on('chat', (m) => this._emit('chat', m));
     s.on('room_closed', () => {
@@ -104,22 +117,67 @@ export class Connection {
     });
   }
 
+  // 전체 상태 수신 (접속/재동기화 응답은 force=true)
   _applyState(state, force) {
-    if (!force && this.state && state.rev < this.state.rev) return;   // 오래된 메시지 무시
-    this.state = state;
+    const newer = this._seqLive && this.state && this.state.seq >= state.seq;   // 이미 더 새로운 것을 갖고 있다
+    if (newer && !force) return;                                              // 오래된 메시지 무시
+    // 접속/재동기화 응답이 그사이 도착한 방송보다 늦게 온 경우에는 가진 것을 그대로 둔다.
+    if (!(newer && this.state.seq > state.seq)) this.state = state;
+    this._seqLive = true;
+    this._drainPending();     // 보관해 둔 patch 중 이어지는 것을 적용한다
     this.stateAt = performance.now();
-    this._emit('state', state);
+    this._emit('state', this.state);
   }
 
-  async _onTimer(t) {
+  // 변경분 수신
+  _onPatch(m) {
+    if (!m || typeof m.seq !== 'number' || typeof m.base !== 'number') return;
+    const st = this._seqLive ? this.state : null;      // 이전 연결에서 받은 상태에는 이어 붙일 수 없다
+    if (st && m.seq <= st.seq) return;                 // 이미 반영된 변경
+    if (!st || m.base !== st.seq) {
+      // 접속 응답보다 먼저 왔거나 하나를 놓쳤다 → 보관하고 전체 상태를 다시 받는다
+      if (this._pending.length < MAX_PENDING_PATCHES) this._pending.push(m);
+      if (st) this._resync();
+      return;
+    }
+    if (!this._applyPatchMessage(m)) { this._resync(); return; }
+    this.stateAt = performance.now();
+    this._emit('state', this.state);
+  }
+
+  _applyPatchMessage(m) {
+    try {
+      const next = applyPatch(this.state, m.p);
+      next.seq = m.seq;
+      next.remaining_ms = m.remaining_ms;
+      this.state = next;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  _drainPending() {
+    const pending = this._pending.sort((a, b) => a.seq - b.seq);
+    this._pending = [];
+    for (const m of pending) {
+      if (m.seq <= this.state.seq) continue;
+      if (m.base !== this.state.seq || !this._applyPatchMessage(m)) break;   // 이어지지 않으면 다음 patch 에서 다시 맞춘다
+    }
+  }
+
+  async _resync() {
+    if (this._syncing) return;
+    this._syncing = true;
+    const res = await this.request('sync');
+    this._syncing = false;
+    if (res.ok) this._applyState(res.snapshot, true);
+  }
+
+  _onTimer(t) {
     if (!this.state) return;
     if (t.rev !== this.state.rev) {
-      // 상태 이벤트를 놓쳤다 → 전체 재동기화
-      if (this._syncing) return;
-      this._syncing = true;
-      const res = await this.request('sync');
-      this._syncing = false;
-      if (res.ok) this._applyState(res.snapshot, true);
+      this._resync();        // 상태 변경을 놓쳤다 → 전체 재동기화
       return;
     }
     this.state.remaining_ms = t.remaining_ms;

@@ -126,18 +126,22 @@ def test_async_manager_saves_after_flush(tmp_path):
     assert not (tmp_path / "rooms" / f"{created.handle.room.id}.json").exists()
 
 
-# ---------------------------------------------------------------- 접속 현황 묶음 전송
-def test_presence_broadcasts_are_coalesced(env):
+# ---------------------------------------------------------------- 접속 현황 전송
+def test_presence_changes_send_nothing_or_a_tiny_patch(env):
     created, host, leaders, obs = setup_room(env, 3, 3)
     host.get_received()
     extra = [env.client() for _ in range(10)]
     for c in extra:
         assert env.join(c, created["room_id"], created["tokens"]["observer"])["ok"]
     time.sleep(0.6)
-    states = [m for m in host.get_received() if m["name"] == "state"]
-    assert 1 <= len(states) <= 3, len(states)          # 10명 입장 → 전체 상태 전송은 1~2번
-    online = states[-1]["args"][0]
-    assert online["room"]["title"]
+    # 관전자 입장은 화면 데이터(팀장/주최자 접속 현황)를 바꾸지 않는다 → 아무것도 보내지 않는다
+    assert [m["name"] for m in host.get_received() if m["name"] in ("state", "patch")] == []
+
+    leaders[0].disconnect()
+    time.sleep(0.6)
+    msgs = [m for m in host.get_received() if m["name"] in ("state", "patch")]
+    assert [m["name"] for m in msgs] == ["patch"]            # 팀장 퇴장 → 접속 현황만 담은 작은 변경분 1개
+    assert len(json.dumps(msgs[0]["args"][0])) < 200
 
 
 def test_tunnel_protocol_flag_is_passed_to_cloudflared(tmp_path):

@@ -16,6 +16,7 @@ import secrets
 import tempfile
 import threading
 import time
+from collections import OrderedDict
 from pathlib import Path
 from typing import Optional
 
@@ -48,6 +49,10 @@ class ImageStore:
         except OSError:
             pass
         self._lock = threading.Lock()
+        # 축소본은 디스크에 두지 않고 메모리에만 둔다 (원본에서 언제든 다시 만들 수 있고, 지울 파일이 늘지 않는다).
+        self._previews: OrderedDict[str, tuple[bytes, bool]] = OrderedDict()   # id -> (바이트, 원본과 같은가)
+        self._preview_bytes = 0
+        self._preview_lock = threading.Lock()
 
     # ------------------------------------------------------------------ 조회
     def _path(self, image_id: str) -> Path:
@@ -75,6 +80,59 @@ class ImageStore:
                 except OSError:
                     continue
         return out
+
+    # ------------------------------------------------------------------ 축소본
+    def preview(self, image_id: str) -> Optional[tuple[bytes, bool]]:
+        """경매 카드에 보여 줄 축소본. 반환: (WebP 바이트, 원본과 같은가). 없는 이미지면 None.
+
+        저장된 원본은 건드리지 않는다. 원본이 이미 충분히 작으면 원본을 그대로 돌려준다.
+        한 번 만든 축소본은 메모리에 보관한다. 같은 사진을 여러 명이 동시에 요청해도 한 번만 만든다.
+        """
+        path = self.path_for(image_id)
+        if path is None:
+            return None
+        with self._preview_lock:
+            hit = self._previews.get(image_id)
+            if hit is not None:
+                self._previews.move_to_end(image_id)
+                return hit
+            try:
+                original = path.read_bytes()
+            except OSError:
+                return None
+            made = self._shrink(original)
+            entry = (original, True) if made is None else (made, False)
+            self._previews[image_id] = entry
+            self._preview_bytes += len(entry[0])
+            while self._preview_bytes > config.PREVIEW_CACHE_BYTES and len(self._previews) > 1:
+                _, (old, _same) = self._previews.popitem(last=False)
+                self._preview_bytes -= len(old)
+            return entry
+
+    @staticmethod
+    def _shrink(original: bytes) -> Optional[bytes]:
+        """축소본 바이트. 줄일 필요가 없거나 줄여도 작아지지 않으면 None."""
+        try:
+            img = Image.open(io.BytesIO(original), formats=["WEBP"])
+            if max(img.size) <= config.PREVIEW_MAX_SIDE:
+                return None
+            img.load()
+            img = img.convert("RGB")
+            img.thumbnail((config.PREVIEW_MAX_SIDE, config.PREVIEW_MAX_SIDE), Image.Resampling.LANCZOS)
+            out = io.BytesIO()
+            img.save(out, format="WEBP", quality=config.PREVIEW_QUALITY, method=4)
+            data = out.getvalue()
+            return data if len(data) < len(original) else None
+        except (UnidentifiedImageError, Image.DecompressionBombError, OSError, ValueError, EOFError,
+                SyntaxError, MemoryError):
+            log.warning("축소본을 만들지 못해 원본을 보냅니다.")
+            return None
+
+    def _forget_preview(self, image_id: str) -> None:
+        with self._preview_lock:
+            old = self._previews.pop(image_id, None)
+            if old is not None:
+                self._preview_bytes -= len(old[0])
 
     # ------------------------------------------------------------------ 저장/삭제
     def save_upload(self, raw: bytes) -> str:
@@ -142,6 +200,7 @@ class ImageStore:
 
     def delete(self, image_id: str) -> bool:
         try:
+            self._forget_preview(image_id)          # 지운 사진의 축소본이 메모리에 남지 않게 한다
             self._path(image_id).unlink()
             return True
         except (FileNotFoundError, ValueError):

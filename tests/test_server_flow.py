@@ -9,7 +9,7 @@ import stat
 
 import pytest
 
-from server import engine
+from server import engine, statediff
 from server.app_config import AppConfig
 from server.app_factory import create_app
 from server.manager import RoomManager
@@ -49,7 +49,10 @@ class Env:
         return r.get_json()
 
     def join(self, client, room_id, token, **extra):
-        return client.emit("join", {"room_id": room_id, "token": token, **extra}, callback=True)
+        ack = client.emit("join", {"room_id": room_id, "token": token, **extra}, callback=True)
+        if ack.get("ok"):
+            client._view = ack["snapshot"]       # last_state() 가 이후의 patch 를 여기에 이어 적용한다
+        return ack
 
     def tick(self, room_id, sec):
         self.clock.advance(sec)
@@ -103,9 +106,32 @@ def snap(client):
     return client.emit("sync", {}, callback=True)["snapshot"]
 
 
+def apply_events(view, events):
+    """브라우저 클라이언트(net.js)와 같은 규칙으로 state/patch 이벤트를 적용한다.
+
+    순번이 이어지지 않으면 None 을 돌려준다 (실제 클라이언트라면 sync 를 요청하는 상황).
+    """
+    for e in events:
+        if e["name"] == "state":
+            view = e["args"][0]
+        elif e["name"] == "patch":
+            m = e["args"][0]
+            if view is None or m["seq"] <= view["seq"]:
+                continue
+            if m["base"] != view["seq"]:
+                return None
+            view = statediff.apply(view, m["p"])
+            view["seq"], view["remaining_ms"] = m["seq"], m["remaining_ms"]
+    return view
+
+
 def last_state(client):
-    states = [e["args"][0] for e in client.get_received() if e["name"] == "state"]
-    return states[-1] if states else None
+    """이 클라이언트가 지금 화면에 갖고 있을 상태 (접속 때 받은 스냅샷 + 이후 받은 변경분)."""
+    view = apply_events(getattr(client, "_view", None), client.get_received())
+    if view is None:                 # 테스트가 중간 메시지를 비운 경우: 실제 클라이언트처럼 다시 받는다
+        view = snap(client)
+    client._view = view
+    return view
 
 
 # =============================================================================

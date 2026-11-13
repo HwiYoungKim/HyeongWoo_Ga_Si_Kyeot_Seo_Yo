@@ -31,6 +31,7 @@ export function profileLine(p) {
 }
 
 // 이미지 0~2장. 0장이면 "이미지 없음"을 보여준다. 눌러서 크게 볼 수 있다.
+// 카드에는 축소본을 보여 주고, 크게 볼 때에만 원본을 받아 바꿔 끼운다 (데이터 절약).
 export function gallery(conn, ids) {
   if (!ids || ids.length === 0) {
     return h('div', { class: 'gallery gallery-empty' }, h('div', { class: 'no-image', text: '이미지 없음' }));
@@ -47,9 +48,17 @@ export function gallery(conn, ids) {
         .then((url) => { img.src = url; fig.classList.remove('loading'); })
         .catch(() => { fig.classList.remove('loading'); fig.classList.add('failed'); note.textContent = '이미지를 불러오지 못했습니다. 눌러서 다시 시도'; });
     };
+    let fullRequested = false;
+    const loadFull = () => {
+      if (fullRequested) return;
+      fullRequested = true;
+      imageUrl(conn, id, 'full')
+        .then((url) => { img.src = url; })
+        .catch(() => { fullRequested = false; });       // 실패하면 축소본을 그대로 두고, 다음에 다시 시도한다
+    };
     const activate = () => {
       if (fig.classList.contains('failed')) load();
-      else if (!fig.classList.contains('loading')) fig.classList.toggle('zoomed');
+      else if (!fig.classList.contains('loading') && fig.classList.toggle('zoomed')) loadFull();
     };
     fig.addEventListener('click', activate);
     fig.addEventListener('keydown', (e) => {

@@ -169,7 +169,7 @@ def host_view(room: Room, now: float, online_teams: Iterable[int], host_online: 
 
 
 def timer_payload(room: Room, now: float) -> dict[str, Any]:
-    """1초마다 보내는 가벼운 타이머 재동기화 메시지."""
+    """주기적으로(config.HEARTBEAT_SEC) 보내는 가벼운 타이머 재동기화 메시지."""
     return {
         "rev": room.rev,
         "lot_seq": room.lot_seq,

@@ -19,7 +19,7 @@ from typing import Any, Callable, Optional
 from flask import request
 from flask_socketio import SocketIO, join_room
 
-from . import config, engine, security, views
+from . import config, engine, security, statediff, views
 from .app_config import AppConfig
 from .engine import AuctionError
 from .manager import RoomHandle, RoomManager
@@ -46,6 +46,28 @@ class Session:
     nickname: str
 
 
+# 패치가 전체 상태의 이 비율보다 크면 그냥 전체를 보낸다 (경매 시작처럼 거의 다 바뀌는 경우).
+PATCH_MAX_RATIO = 0.8
+
+
+class _Sent:
+    """한 대상(공용/주최자)에게 마지막으로 보낸 화면 데이터와 그 순번."""
+    __slots__ = ("seq", "view")
+
+    def __init__(self) -> None:
+        self.seq = 0
+        self.view: Optional[dict[str, Any]] = None      # remaining_ms 를 뺀 화면 데이터
+
+
+class _RoomBroadcast:
+    """방 하나의 전송 상태. lock 을 잡은 채로 계산·전송해서 순번과 실제 전송 순서를 일치시킨다."""
+    __slots__ = ("lock", "sent")
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.sent = {"pub": _Sent(), "host": _Sent()}
+
+
 def _fail(code: str, message: str) -> dict[str, Any]:
     return {"ok": False, "code": code, "message": message}
 
@@ -67,6 +89,7 @@ class SocketApi:
         self.connected: set[str] = set()
         self._pending_presence: set[str] = set()
         self._pending_lock = threading.Lock()
+        self._broadcasts: dict[str, _RoomBroadcast] = {}
         self.join_failures = security.FailureLimiter(limit=20, window=60, lockout=120)
         self.buckets = {
             "join": security.RateLimiter(capacity=5, refill_per_sec=0.5),
@@ -78,16 +101,65 @@ class SocketApi:
         self._register()
 
     # ------------------------------------------------------------------ 브로드캐스트
-    def emit_state(self, handle: RoomHandle) -> None:
-        """현재 상태를 역할별 방에 전송한다. 직렬화는 락 안에서, 전송은 락 밖에서 한다."""
+    def _broadcast(self, room_id: str) -> _RoomBroadcast:
+        with self._pending_lock:
+            bc = self._broadcasts.get(room_id)
+            if bc is None:
+                bc = self._broadcasts[room_id] = _RoomBroadcast()
+            return bc
+
+    def forget_room(self, room_id: str) -> None:
+        with self._pending_lock:
+            self._broadcasts.pop(room_id, None)
+
+    def emit_state(self, handle: RoomHandle, want: Optional[str] = None) -> Optional[dict[str, Any]]:
+        """현재 상태를 역할별 방에 전송한다. 마지막으로 보낸 것과 달라진 부분(패치)만 보낸다.
+
+        - 대상(공용/주최자)마다 순번(seq)을 매긴다. 패치는 "base 번 상태를 seq 번으로 바꾸는 변경분"이고,
+          클라이언트는 자기가 가진 순번이 base 와 다르면 전체 상태를 다시 요청한다.
+        - 바뀐 것이 없으면 아무것도 보내지 않는다 (예: 관전자 입장).
+        - want 가 "pub"/"host" 이면 그 대상의 현재 전체 상태(순번 포함)를 돌려준다. 접속·재동기화 응답에 쓴다.
+          이렇게 돌려준 상태는 항상 "seq 번으로 방송된 내용"과 같으므로 이후 패치를 그대로 이어 적용할 수 있다.
+
+        handle.lock 을 잡은 채로 호출하면 안 된다 (잠금 순서: 전송 lock -> handle.lock).
+        """
         room_id = handle.room.id
-        online, host_online = self.manager.presence(handle)
-        with handle.lock:
-            now = self.manager.clock()
-            pub = views.public_view(handle.room, now, online, host_online)
-            host = views.host_view(handle.room, now, online, host_online)
-        self.sio.emit("state", pub, to=pub_room(room_id))
-        self.sio.emit("state", host, to=host_room(room_id))
+        bc = self._broadcast(room_id)
+        result: Optional[dict[str, Any]] = None
+        with bc.lock:
+            online, host_online = self.manager.presence(handle)
+            with handle.lock:
+                now = self.manager.clock()
+                fresh = {
+                    "pub": views.public_view(handle.room, now, online, host_online),
+                    "host": views.host_view(handle.room, now, online, host_online),
+                }
+            for audience, target in (("pub", pub_room(room_id)), ("host", host_room(room_id))):
+                view = fresh[audience]
+                remaining_ms = view.pop("remaining_ms")     # 시간에 따라 변하는 값은 비교에서 빼고 항상 따로 보낸다
+                sent = bc.sent[audience]
+                if sent.view is None:
+                    # 아직 아무에게도 준 적이 없다 → 받을 사람도 없다. 기준만 잡는다.
+                    sent.seq, sent.view = 1, view
+                else:
+                    try:
+                        patch = statediff.diff(sent.view, view)
+                        too_big = (patch is not statediff.SAME and
+                                   statediff.encoded_size(patch) > PATCH_MAX_RATIO * statediff.encoded_size(view))
+                    except Exception:               # 변경분 계산이 실패해도 방송은 반드시 나가야 한다
+                        log.exception("변경분 계산 오류 - 전체 상태를 보냅니다")
+                        patch, too_big = None, True
+                    if patch is not statediff.SAME:
+                        base = sent.seq
+                        sent.seq, sent.view = base + 1, view
+                        if too_big:
+                            self.sio.emit("state", {**view, "remaining_ms": remaining_ms, "seq": sent.seq}, to=target)
+                        else:
+                            self.sio.emit("patch", {"base": base, "seq": sent.seq, "remaining_ms": remaining_ms,
+                                                    "p": patch}, to=target)
+                if audience == want:
+                    result = {**sent.view, "remaining_ms": remaining_ms, "seq": sent.seq}
+        return result
 
     def emit_state_soon(self, handle: RoomHandle) -> None:
         """입장/퇴장처럼 급하지 않은 변화는 PRESENCE_DELAY 동안 모아 한 번만 보낸다.
@@ -113,6 +185,9 @@ class SocketApi:
         self.sio.start_background_task(run)
 
     def emit_timer(self, handle: RoomHandle) -> None:
+        # 타이머의 rev 가 클라이언트 상태보다 앞서면 불필요한 재동기화가 일어난다.
+        # 아직 방송되지 않은 변화가 있으면 먼저 내보낸다 (없으면 아무것도 보내지 않는다).
+        self.emit_state(handle)
         with handle.lock:
             payload = views.timer_payload(handle.room, self.manager.clock())
         room_id = handle.room.id
@@ -120,12 +195,10 @@ class SocketApi:
         self.sio.emit("timer", payload, to=host_room(room_id))
 
     def snapshot_for(self, sess: Session) -> dict[str, Any]:
-        online, host_online = self.manager.presence(sess.handle)
-        with sess.handle.lock:
-            now = self.manager.clock()
-            if sess.role == "host":
-                return views.host_view(sess.handle.room, now, online, host_online)
-            return views.public_view(sess.handle.room, now, online, host_online)
+        """이 세션이 받을 전체 상태. (아직 방송되지 않은 변화가 있으면 먼저 방송해 순번을 맞춘다.)"""
+        snapshot = self.emit_state(sess.handle, want="host" if sess.role == "host" else "pub")
+        assert snapshot is not None
+        return snapshot
 
     def kick(self, sids: list[str]) -> None:
         for sid in sids:
@@ -429,6 +502,7 @@ class SocketApi:
         self.sio.emit("room_closed", {}, to=pub_room(room_id))
         self.sio.emit("room_closed", {}, to=host_room(room_id))
         self.manager.delete_room(room_id)
+        self.forget_room(room_id)
 
         def later():
             self.sio.sleep(0.5)
@@ -439,7 +513,7 @@ class SocketApi:
 
 
 def start_ticker(sio: SocketIO, manager: RoomManager, api: SocketApi) -> None:
-    """백그라운드 루프: 타이머 만료 처리, 1초 하트비트, 오래된 방 정리."""
+    """백그라운드 루프: 타이머 만료 처리, 타이머 재동기화(HEARTBEAT_SEC), 오래된 방 정리."""
 
     def loop():
         last_purge = time.monotonic()
@@ -459,7 +533,8 @@ def start_ticker(sio: SocketIO, manager: RoomManager, api: SocketApi) -> None:
             if now - last_purge > 3600:
                 last_purge = now
                 try:
-                    manager.purge_expired()
+                    for room_id in manager.purge_expired():
+                        api.forget_room(room_id)
                 except Exception:
                     log.exception("만료 방 정리 오류")
 

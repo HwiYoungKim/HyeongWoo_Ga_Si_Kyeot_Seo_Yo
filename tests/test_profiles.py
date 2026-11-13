@@ -437,3 +437,81 @@ def test_multi_role_player_visible_to_everyone_and_in_unsold_list(env):
     assert host.emit("host_setup", {"players": players}, callback=True)["ok"]
     listed = {p["name"]: p for p in host.emit("host_roster_list", {}, callback=True)["players"]}
     assert listed[players[0]["name"]]["roles"] == ["tank", "damage", "support"]
+
+
+# ---------------------------------------------------------------- 카드용 축소본 (데이터 절약)
+def noisy_png(size):
+    import random as _random
+    rnd = _random.Random(1)
+    img = Image.new("RGB", size)
+    img.putdata([(rnd.randrange(256), rnd.randrange(256), rnd.randrange(256)) for _ in range(size[0] * size[1])])
+    img = img.resize((size[0] * 4, size[1] * 4), Image.Resampling.BICUBIC)      # 사진처럼 부드러운 무늬
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    return buf.getvalue()
+
+
+def test_preview_is_smaller_and_original_is_untouched(env):
+    created = env.create()
+    rid, tok = created["room_id"], created["tokens"]
+    iid = upload(env, rid, tok["host"], data=noisy_png((500, 300))).get_json()["id"]      # 2000x1200 → 1600x960 로 저장
+    stored = env.manager.images.path_for(iid).read_bytes()
+
+    full = env.http.get(f"/api/rooms/{rid}/images/{iid}", headers=bearer(tok["host"]))
+    preview = env.http.get(f"/api/rooms/{rid}/images/{iid}?v=preview", headers=bearer(tok["host"]))
+    assert full.status_code == preview.status_code == 200
+    assert full.data == stored and full.headers["X-Image-Original"] == "1"
+    assert preview.headers["X-Image-Original"] == "0" and preview.mimetype == "image/webp"
+    assert preview.headers["Cache-Control"] == "no-store"
+    assert len(preview.data) < 0.7 * len(full.data), (len(preview.data), len(full.data))
+    small = Image.open(io.BytesIO(preview.data))
+    assert small.format == "WEBP" and max(small.size) == config.PREVIEW_MAX_SIDE
+    assert Image.open(io.BytesIO(full.data)).size == (1600, 960)
+    assert env.manager.images.path_for(iid).read_bytes() == stored             # 저장된 원본은 그대로
+
+
+def test_small_image_preview_is_the_original(env):
+    created = env.create()
+    rid, tok = created["room_id"], created["tokens"]
+    iid = upload(env, rid, tok["host"], data=png_bytes((640, 480))).get_json()["id"]
+    full = env.http.get(f"/api/rooms/{rid}/images/{iid}", headers=bearer(tok["host"]))
+    preview = env.http.get(f"/api/rooms/{rid}/images/{iid}?v=preview", headers=bearer(tok["host"]))
+    assert preview.data == full.data and preview.headers["X-Image-Original"] == "1"
+
+
+def test_preview_follows_the_same_visibility_rules(env):
+    created, host, leaders, obs = setup_room(env)
+    rid, tok = created["room_id"], created["tokens"]
+    iid = upload(env, rid, tok["host"], data=noisy_png((500, 300))).get_json()["id"]
+    players = [{**p, "role": "support"} for p in players_payload(6)]
+    players[0]["images"] = [iid]
+    assert host.emit("host_setup", {"players": players}, callback=True)["ok"]
+    url = f"/api/rooms/{rid}/images/{iid}?v=preview"
+    assert env.http.get(url).status_code == 403                                    # 토큰 없음
+    assert env.http.get(url, headers=bearer(tok["host"])).status_code == 200
+    assert env.http.get(url, headers=bearer(tok["observer"])).status_code == 404   # 경매 전에는 주최자만
+    assert env.http.get(url, headers=bearer(tok["leaders"][0])).status_code == 404
+
+
+def test_preview_is_cached_and_dropped_with_the_image(env, monkeypatch):
+    store = env.manager.images
+    iid = store.save_upload(noisy_png((500, 300)))
+    calls = []
+    real = store._shrink
+    monkeypatch.setattr(type(store), "_shrink", staticmethod(lambda raw: calls.append(1) or real(raw)))
+    first = store.preview(iid)
+    assert store.preview(iid) is first and len(calls) == 1          # 두 번째부터는 다시 만들지 않는다
+    assert store._preview_bytes == len(first[0])
+    assert store.delete(iid)
+    assert store.preview(iid) is None and store._preview_bytes == 0 and iid not in store._previews
+
+
+def test_preview_cache_is_bounded(env, monkeypatch):
+    store = env.manager.images
+    ids = [store.save_upload(noisy_png((500, 300))) for _ in range(3)]
+    one = len(store.preview(ids[0])[0])
+    monkeypatch.setattr(config, "PREVIEW_CACHE_BYTES", int(one * 1.5))
+    for iid in ids:
+        store.preview(iid)
+    assert len(store._previews) == 1 and ids[-1] in store._previews
+    assert store._preview_bytes <= config.PREVIEW_CACHE_BYTES

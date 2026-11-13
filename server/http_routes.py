@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import urlparse
 
-from flask import Flask, abort, jsonify, render_template, request, send_file
+from flask import Flask, Response, abort, jsonify, render_template, request, send_file
 
 from . import config, heroes, security, views
 from .app_config import AppConfig
@@ -93,7 +93,15 @@ def register_routes(app: Flask, manager: RoomManager, cfg: AppConfig, admin_fail
                     allowed = image_id in views.visible_image_ids(handle.room, auth.role)
         if not allowed or path is None:
             return _json_error("찾을 수 없습니다.", 404, "not_found")
-        resp = send_file(path, mimetype="image/webp", conditional=False, max_age=0)
+        # ?v=preview: 경매 카드용 축소본 (데이터 절약). 그 밖에는 저장된 원본. 권한 검사는 위에서 똑같이 거친다.
+        preview = manager.images.preview(image_id) if request.args.get("v") == "preview" else None
+        if preview is not None:
+            data, same_as_original = preview
+            resp = Response(data, mimetype="image/webp")
+            resp.headers["X-Image-Original"] = "1" if same_as_original else "0"
+        else:
+            resp = send_file(path, mimetype="image/webp", conditional=False, max_age=0)
+            resp.headers["X-Image-Original"] = "1"
         resp.headers["Cache-Control"] = "no-store"
         resp.headers["Content-Disposition"] = "inline"
         return resp
