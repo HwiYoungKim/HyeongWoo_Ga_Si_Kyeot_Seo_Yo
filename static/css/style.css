@@ -143,12 +143,14 @@ textarea { width: 100%; margin: .5rem 0; }
 /* ---- 사이드 패널 ---- */
 .plain, .activity, .upcoming, .priority, .pairs { padding-left: 1.2rem; margin: .3rem 0; font-size: .88rem; }
 .plain { list-style: none; padding-left: 0; }
-.activity { list-style: none; padding-left: 0; max-height: 14rem; overflow: auto; }
+.activity { list-style: none; padding-left: 0; height: 14rem; overflow: auto; }
+.activity-empty { height: 14rem; margin: .3rem 0; }
 .activity li { padding: .15rem 0; border-bottom: 1px solid var(--line); }
 .priority .now { color: var(--warn); font-weight: 700; }
 .pick-box { margin-top: .6rem; }
 
-.chat-log { list-style: none; margin: 0 0 .5rem; padding: 0; max-height: 16rem; overflow: auto; font-size: .88rem; }
+/* 높이를 고정한다: 메시지가 쌓여도 화면이 아래로 늘어나지 않고 이 안에서만 스크롤된다. */
+.chat-log { list-style: none; margin: 0 0 .5rem; padding: 0; height: 16rem; overflow: auto; font-size: .88rem; }
 .chat-log li { padding: .15rem 0; overflow-wrap: anywhere; }
 .chat-time { color: var(--sub); margin-right: .4rem; font-size: .75rem; }
 .chat-name { font-weight: 700; margin-right: .4rem; }
@@ -180,9 +182,11 @@ textarea { width: 100%; margin: .5rem 0; }
 .gallery { display: flex; gap: .6rem; justify-content: center; flex-wrap: wrap; margin: .8rem 0; }
 .player-fig { margin: 0; position: relative; cursor: zoom-in; border-radius: 8px; overflow: hidden; background: var(--panel-2); border: 1px solid var(--line); min-width: 8rem; min-height: 6rem; display: flex; align-items: center; justify-content: center; }
 .player-fig:focus-visible { outline: 2px solid var(--accent); }
-.player-img { display: block; max-width: 100%; max-height: 18rem; object-fit: contain; }
-.gallery-1 .player-fig { max-width: min(100%, 26rem); }
-.gallery-2 .player-fig { max-width: calc(50% - .3rem); }
+/* 사진은 무대 폭을 가득 쓴다 (글자가 든 프로필 이미지도 읽을 수 있게). 2장이면 위아래로 쌓는다. */
+.player-img { display: block; max-width: 100%; max-height: 36rem; object-fit: contain; }
+.gallery-1 .player-fig, .gallery-2 .player-fig { max-width: 100%; }
+.gallery-2 { flex-direction: column; align-items: center; }
+.gallery-2 .player-img { max-height: 28rem; }
 .player-fig.loading .player-img, .player-fig.failed .player-img { display: none; }
 .player-fig.loading::after { content: "불러오는 중…"; color: var(--sub); font-size: .85rem; padding: 1rem; }
 .img-note { padding: .8rem; }

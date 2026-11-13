@@ -165,7 +165,7 @@ export function renderActivity(box, state) {
     h('h2', { text: '진행 기록' }),
     items.length
       ? h('ul', { class: 'activity' }, items.map((e) => h('li', { text: activityText(e, state.teams) })))
-      : h('p', { class: 'sub', text: '아직 기록이 없습니다.' }),
+      : h('p', { class: 'sub activity-empty', text: '아직 기록이 없습니다.' }),   // 기록이 생겨도 칸 높이가 변하지 않게 같은 높이
   );
 }
 

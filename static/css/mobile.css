@@ -80,7 +80,9 @@ html[data-device="mobile"] .lot-intro { max-width: none; font-size: .92rem; }
 html[data-device="mobile"] .lot-empty { padding: 1rem 0; }
 html[data-device="mobile"] .profile-line,
 html[data-device="mobile"] .hero-line { gap: .3rem; }
-html[data-device="mobile"] .player-img { max-height: 14rem; }
+html[data-device="mobile"] .player-img { max-height: 70dvh; }
+html[data-device="mobile"] .gallery-2 .player-img { max-height: 50dvh; }
+html[data-device="mobile"][data-orient="landscape"] .player-img { max-height: 80dvh; }
 html[data-device="mobile"] .bid-status { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .3rem; }
 html[data-device="mobile"] .bid-status .label { font-size: .72rem; }
 html[data-device="mobile"] .bid-status .value { font-size: 1.05rem; overflow-wrap: normal; }
@@ -90,8 +92,9 @@ html[data-device="mobile"] .team-grid { grid-template-columns: repeat(auto-fill,
 html[data-device="mobile"] .team { padding: .55rem; }
 
 /* 사이드 패널: 길어지지 않게 */
-html[data-device="mobile"] .activity { max-height: 9rem; }
-html[data-device="mobile"] .chat-log { max-height: 11rem; }
+html[data-device="mobile"] .activity,
+html[data-device="mobile"] .activity-empty { height: 9rem; }
+html[data-device="mobile"] .chat-log { height: 11rem; }
 html[data-device="mobile"] .chat-form input,
 html[data-device="mobile"] .bid-form input { font-size: 16px; }
 
