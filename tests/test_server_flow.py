@@ -49,6 +49,7 @@ class Env:
         return r.get_json()
 
     def join(self, client, room_id, token, **extra):
+        extra.setdefault("nickname", "테스트관전")      # 관전자는 닉네임이 있어야 들어갈 수 있다 (주최자·팀장은 무시됨)
         ack = client.emit("join", {"room_id": room_id, "token": token, **extra}, callback=True)
         if ack.get("ok"):
             client._view = ack["snapshot"]       # last_state() 가 이후의 patch 를 여기에 이어 적용한다

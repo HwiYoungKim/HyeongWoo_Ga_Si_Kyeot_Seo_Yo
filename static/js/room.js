@@ -8,6 +8,7 @@ import { loadMeta } from './lib/meta.js';
 import * as common from './views/common.js';
 import { mountChat } from './views/chat.js';
 import { savedNickname } from './views/observer.js';
+import { createNicknameGate } from './views/nickname_gate.js';
 import { trackFixedBar, syncMiniTimer } from './lib/mobile.js';
 
 loadMeta();   // 영웅 목록/제한값을 소켓 접속과 동시에 미리 받아 둔다 (join 이후 대기 시간 제거)
@@ -69,6 +70,17 @@ function start() {
   conn.on('toast', (m) => toast(m, 'error'));
   conn.on('fatal', fatal);
 
+  // 관전자는 닉네임을 정해야 들어갈 수 있다. (같은 탭에서 이미 정했다면 그 닉네임으로 바로 들어간다.)
+  const gate = createNicknameGate(conn, savedNickname());
+  let gateTried = false;
+  conn.on('need_nickname', ({ message, entered }) => {
+    if (entered) { toast(message, 'error'); return; }       // 이미 들어와서 닉네임을 바꾸다 실패한 경우
+    el.conn.textContent = '닉네임 입력 대기';
+    el.conn.className = 'conn conn-wait';
+    gate.show(gateTried ? message : '');
+    gateTried = true;
+  });
+
   async function pick(opponent) {
     const event = conn.role === 'host' ? 'host_pick' : 'pick_opponent';
     const res = await conn.request(event, { opponent });
@@ -91,6 +103,7 @@ function start() {
   conn.on('state', render);
 
   conn.on('joined', async (info) => {
+    gate.hide();
     if (!info.first) {
       chat?.reset(info.chat);          // 재접속: 놓친 채팅 복구 (상태는 스냅샷으로 이미 갱신됨)
       render(conn.state);

@@ -245,3 +245,13 @@ textarea { width: 100%; margin: .5rem 0; }
 /* ---- 명부 일괄 추가 ---- */
 .roster-tools { align-items: center; margin: .4rem 0; }
 .roster-check { width: 1.1rem; height: 1.1rem; flex: none; }
+
+/* ---- 관전자 입장(닉네임 설정) 창 ---- */
+.gate { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+  padding: 1rem; background: var(--bg); }
+.gate-box { width: min(24rem, 100%); display: flex; flex-direction: column; gap: .6rem; padding: 1.4rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+.gate-box h2 { margin: 0; }
+.gate-box input { width: 100%; }
+.gate-error { min-height: 1.2em; margin: 0; color: var(--bad); font-size: .9rem; }
+body.gated { overflow: hidden; }

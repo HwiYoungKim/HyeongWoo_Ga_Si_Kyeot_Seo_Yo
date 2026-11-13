@@ -82,6 +82,9 @@ export class Connection {
       if (res.code === 'auth') {
         this.socket.disconnect();                // 잘못된 링크는 재시도하지 않는다
         this._emit('fatal', res.message);
+      } else if (res.code === 'nickname_required') {
+        // 관전자는 닉네임을 정해야 들어갈 수 있다. 화면이 입력창을 띄우고 rejoin(닉네임) 을 부른다.
+        this._emit('need_nickname', { message: res.message, entered: this.joined });
       } else {
         this._emit('status', 'offline');
         this._emit('toast', res.message || '접속에 실패했습니다.');

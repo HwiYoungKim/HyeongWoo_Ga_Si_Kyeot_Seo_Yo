@@ -305,6 +305,17 @@ class SocketApi:
         handle = self.manager.get(room_id)
         assert handle is not None
 
+        # 관전자는 닉네임을 정해야 들어올 수 있다. 정하기 전에는 방의 상태도 채팅도 내려주지 않는다.
+        # (이미 들어와 있는 관전자가 빈 닉네임으로 바꾸려는 경우에는 기존 접속을 그대로 둔다.)
+        observer_nick = ""
+        if auth.role == "observer":
+            try:
+                observer_nick = clean_text(data.get("nickname"), config.NICK_LEN, field="닉네임")
+            except ValidationError as e:
+                return _fail("nickname_required", e.message)
+            if not observer_nick:
+                return _fail("nickname_required", "채팅에 표시될 닉네임을 정해 주세요.")
+
         # 재접속(같은 연결에서 다시 join)이면 이전 세션을 정리한다.
         old = self.sessions.pop(sid, None)
         if old is not None:
@@ -318,10 +329,7 @@ class SocketApi:
                 with handle.lock:
                     nickname = handle.room.teams[auth.team_id].leader_name  # type: ignore[index]
             else:
-                try:
-                    nickname = clean_text(data.get("nickname"), config.NICK_LEN, field="닉네임") or "관전자"
-                except ValidationError:
-                    nickname = "관전자"
+                nickname = observer_nick
                 # 채팅에서 주최자/팀장을 사칭하지 못하도록 예약된 이름에는 표시를 붙인다.
                 with handle.lock:
                     reserved = {t.leader_name.casefold() for t in handle.room.teams} | {"주최자"}
