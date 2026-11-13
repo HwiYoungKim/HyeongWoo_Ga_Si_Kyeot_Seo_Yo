@@ -82,6 +82,7 @@ textarea { width: 100%; margin: .5rem 0; }
 .stage { text-align: center; }
 .timer { font-size: 3rem; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
 .timer-hidden { display: none; }
+.mini-timer { display: none; }   /* 모바일 화면(css/mobile.css)에서만 보인다 */
 .timer-danger { color: var(--bad); }
 .timer-paused { color: var(--warn); font-size: 2rem; }
 .lot-card { margin: .4rem 0 1rem; }

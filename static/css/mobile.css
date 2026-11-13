@@ -1,0 +1,159 @@
+/* 모바일(폰) 전용 화면. js/device-detect.js 가 <html data-device="mobile"> 을 달아 줄 때만 적용된다.
+   PC 화면은 css/style.css 만으로 동작하므로, 이 파일의 모든 규칙은 html[data-device="mobile"] 아래에 둔다.
+   세로(portrait)에서는 팀장의 입찰 바를 화면 아래에 고정하고, 가로(landscape)에서는 일반 흐름으로 되돌린다. */
+
+html[data-device="mobile"] {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --bar-h: 0px;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  touch-action: manipulation;                /* 더블탭 확대 지연 제거: 빠른 연속 입찰용 */
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: contain;            /* 실수로 당겨서 새로고침되는 것 방지 */
+}
+html[data-device="mobile"] body {
+  min-height: 100dvh;
+  word-break: keep-all;                      /* 한글 단어 중간에서 줄바꿈하지 않기 */
+  overflow-wrap: anywhere;
+  overflow-x: hidden;
+}
+html[data-device="mobile"] h1 { font-size: 1.25rem; }
+html[data-device="mobile"] h2 { font-size: 1rem; }
+
+/* ---- 터치 크기: 버튼 44px, 입력칸 16px 글자(iOS 가 확대하지 않도록) ---- */
+html[data-device="mobile"] .btn { min-height: 44px; padding: .5rem 1rem; font-size: 1rem; }
+html[data-device="mobile"] .btn-sm { min-height: 40px; padding: .35rem .8rem; font-size: .9rem; }
+html[data-device="mobile"] input,
+html[data-device="mobile"] select,
+html[data-device="mobile"] textarea { font-size: 16px; min-height: 44px; }
+html[data-device="mobile"] input[type="checkbox"],
+html[data-device="mobile"] input[type="radio"] { min-height: 0; width: 1.3rem; height: 1.3rem; }
+html[data-device="mobile"] summary { min-height: 44px; display: flex; align-items: center; }
+html[data-device="mobile"] .hero-chip,
+html[data-device="mobile"] .chip-removable,
+html[data-device="mobile"] .role-btn { min-height: 40px; }
+html[data-device="mobile"] .row { flex-wrap: wrap; }
+html[data-device="mobile"] .row > input { flex: 1 1 10rem; min-width: 0; }
+
+/* ---- 첫 화면(방 만들기) ---- */
+html[data-device="mobile"] .container { padding: .8rem calc(.8rem + var(--safe-right)) 1.2rem calc(.8rem + var(--safe-left)); }
+html[data-device="mobile"] .form-grid { grid-template-columns: 1fr; }
+
+/* ---- 상단 바: 한 줄로 고정 ---- */
+html[data-device="mobile"] .topbar {
+  position: sticky; top: 0; z-index: 15;
+  flex-wrap: nowrap; gap: .45rem;
+  padding: calc(.45rem + var(--safe-top)) calc(.7rem + var(--safe-right)) .45rem calc(.7rem + var(--safe-left));
+}
+html[data-device="mobile"] .topbar h1 { font-size: 1rem; margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html[data-device="mobile"] .topbar .badge { flex: none; white-space: nowrap; font-size: .75rem; padding: .1rem .45rem; }
+html[data-device="mobile"] #state-label { display: none; }     /* 매물 카드에 같은 정보가 있다 */
+html[data-device="mobile"] .conn { flex: none; font-size: .72rem; white-space: nowrap; }
+html[data-device="mobile"] .conn-ok { font-size: 0; }          /* 정상일 때는 점만 */
+html[data-device="mobile"] .conn::before { content: ""; display: inline-block; width: .6rem; height: .6rem; border-radius: 50%; background: currentColor; margin-right: .3rem; vertical-align: middle; }
+html[data-device="mobile"] .conn-ok::before { margin-right: 0; }
+
+/* 상단 바 안의 작은 타이머 (스크롤해도 남은 시간이 보인다) */
+html[data-device="mobile"] .mini-timer {
+  display: inline-block; flex: none; font-weight: 800; font-size: 1.05rem; font-variant-numeric: tabular-nums;
+  padding: .05rem .5rem; border-radius: 6px; background: var(--panel-2); border: 1px solid var(--line);
+}
+html[data-device="mobile"] .mini-timer[hidden] { display: none; }
+html[data-device="mobile"] .mini-timer.timer-danger { color: var(--bad); border-color: var(--bad); }
+html[data-device="mobile"] .mini-timer.timer-paused { color: var(--warn); border-color: var(--warn); font-size: .8rem; }
+
+/* ---- 경매방 레이아웃: 한 열, 촘촘한 여백 ---- */
+html[data-device="mobile"] .layout { padding: .6rem calc(.6rem + var(--safe-right)) .6rem calc(.6rem + var(--safe-left)); gap: .6rem; }
+html[data-device="mobile"] .layout > .side { gap: .6rem; }
+html[data-device="mobile"] .panel { padding: .8rem; margin-bottom: .6rem; border-radius: 12px; }
+html[data-device="mobile"] .layout > .panel { margin-bottom: 0; }
+
+/* 무대 */
+html[data-device="mobile"] .timer { font-size: 2.6rem; line-height: 1.1; }
+html[data-device="mobile"] .timer-paused { font-size: 1.5rem; }
+html[data-device="mobile"] .lot-name { font-size: 1.6rem; line-height: 1.2; }
+html[data-device="mobile"] .lot-card { margin: .3rem 0 .6rem; }
+html[data-device="mobile"] .lot-intro { max-width: none; font-size: .92rem; }
+html[data-device="mobile"] .lot-empty { padding: 1rem 0; }
+html[data-device="mobile"] .profile-line,
+html[data-device="mobile"] .hero-line { gap: .3rem; }
+html[data-device="mobile"] .player-img { max-height: 14rem; }
+html[data-device="mobile"] .bid-status { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .3rem; }
+html[data-device="mobile"] .bid-status .label { font-size: .72rem; }
+html[data-device="mobile"] .bid-status .value { font-size: 1.05rem; overflow-wrap: normal; }
+
+/* 팀 현황: 화면이 넓으면 2열, 좁으면 1열 */
+html[data-device="mobile"] .team-grid { grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr)); gap: .5rem; }
+html[data-device="mobile"] .team { padding: .55rem; }
+
+/* 사이드 패널: 길어지지 않게 */
+html[data-device="mobile"] .activity { max-height: 9rem; }
+html[data-device="mobile"] .chat-log { max-height: 11rem; }
+html[data-device="mobile"] .chat-form input,
+html[data-device="mobile"] .bid-form input { font-size: 16px; }
+
+/* ---- 팀장: 입찰 바를 화면 아래에 고정 (세로 화면) ---- */
+html[data-device="mobile"][data-orient="portrait"] body[data-role="leader"] { padding-bottom: calc(var(--bar-h) + .8rem); }
+html[data-device="mobile"][data-orient="portrait"] body[data-role="leader"] #role-panel {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; margin: 0;
+  padding: .55rem calc(.7rem + var(--safe-right)) calc(.55rem + var(--safe-bottom)) calc(.7rem + var(--safe-left));
+  border-width: 1px 0 0; border-radius: 14px 14px 0 0;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, .55);
+}
+html[data-device="mobile"] body[data-role="leader"] #role-panel > h2 { display: none; }
+html[data-device="mobile"] body[data-role="leader"] .leader-info { font-size: .82rem; line-height: 1.3; }
+html[data-device="mobile"] body[data-role="leader"] .quick-bids {
+  flex-wrap: nowrap; overflow-x: auto; margin: .4rem -.2rem; padding: 0 .2rem;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+html[data-device="mobile"] body[data-role="leader"] .quick-bids::-webkit-scrollbar { display: none; }
+html[data-device="mobile"] body[data-role="leader"] .quick-bids .btn { flex: none; white-space: nowrap; }
+html[data-device="mobile"] body[data-role="leader"] .bid-form { gap: .4rem; }
+html[data-device="mobile"] body[data-role="leader"] .bid-form input { min-height: 48px; font-size: 18px; }
+html[data-device="mobile"] body[data-role="leader"] .bid-form .btn { min-height: 48px; min-width: 5.5rem; font-size: 1.05rem; }
+html[data-device="mobile"] body[data-role="leader"] .bid-hint { font-size: .78rem; margin-top: .2rem; }
+html[data-device="mobile"] body[data-role="leader"] .bid-result { min-height: 0; font-size: .82rem; margin-top: .15rem; }
+html[data-device="mobile"] body[data-role="leader"] .bid-result:empty { display: none; }
+
+/* 토스트는 입찰 바 위에 */
+html[data-device="mobile"] #toasts {
+  left: calc(.6rem + var(--safe-left)); right: calc(.6rem + var(--safe-right));
+  bottom: calc(var(--bar-h) + var(--safe-bottom) + .6rem); max-width: none;
+}
+
+/* ---- 주최자 화면 ---- */
+/* 팀 입력줄: 번호 / 이름·포지션 / 핸디캡 (핸디캡 칸이 24px 로 찌그러지던 문제) */
+html[data-device="mobile"] .team-row { grid-template-columns: 1.5rem minmax(0, 1fr) minmax(0, 1fr); }
+html[data-device="mobile"] .team-row > input:last-child { grid-column: 2 / -1; }
+html[data-device="mobile"] .player-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+html[data-device="mobile"] .pc-top,
+html[data-device="mobile"] .pc-mid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+html[data-device="mobile"] .link-row,
+html[data-device="mobile"] .issued-row { grid-template-columns: minmax(0, 1fr); }
+html[data-device="mobile"] .link-row .btn,
+html[data-device="mobile"] .issued-row .btn { width: 100%; }
+html[data-device="mobile"] .panel-sub { padding: .4rem .7rem; }
+html[data-device="mobile"] .role-select { flex-wrap: wrap; }
+html[data-device="mobile"] .roster-list,
+html[data-device="mobile"] .hero-grid { max-height: 14rem; }
+
+/* 사진 확대 보기 */
+html[data-device="mobile"] .player-fig.zoomed .player-img { max-width: 100vw; max-height: 100dvh; }
+
+/* ---- 가로(landscape) 폰: 높이가 낮으니 입찰 바를 고정하지 않고 위쪽 여백을 줄인다 ---- */
+html[data-device="mobile"][data-orient="landscape"] .timer { font-size: 2rem; }
+html[data-device="mobile"][data-orient="landscape"] .lot-name { font-size: 1.3rem; }
+html[data-device="mobile"][data-orient="landscape"] .layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+html[data-device="mobile"][data-orient="landscape"] .layout > .stage,
+html[data-device="mobile"][data-orient="landscape"] .layout > #role-panel,
+html[data-device="mobile"][data-orient="landscape"] .layout > #teams { grid-column: 1; }
+html[data-device="mobile"][data-orient="landscape"] .layout > .side { grid-column: 2; grid-row: 1 / span 3; }
+/* 가로 화면의 팀장: 입찰칸을 오른쪽 위에 두고 스크롤해도 따라오게 한다 (세로 화면의 하단 바 대신) */
+html[data-device="mobile"][data-orient="landscape"] body[data-role="leader"] .layout > #role-panel {
+  grid-column: 2; grid-row: 1; position: sticky; top: 3.4rem; z-index: 5; align-self: start;
+}
+html[data-device="mobile"][data-orient="landscape"] body[data-role="leader"] .layout > .side { grid-row: 2 / span 2; }
+html[data-device="mobile"][data-orient="landscape"] body[data-role="leader"] .quick-bids { flex-wrap: wrap; }

@@ -8,6 +8,7 @@ import { loadMeta } from './lib/meta.js';
 import * as common from './views/common.js';
 import { mountChat } from './views/chat.js';
 import { savedNickname } from './views/observer.js';
+import { trackFixedBar, syncMiniTimer } from './lib/mobile.js';
 
 loadMeta();   // 영웅 목록/제한값을 소켓 접속과 동시에 미리 받아 둔다 (join 이후 대기 시간 제거)
 
@@ -19,6 +20,7 @@ const el = {
   role: $('#role-badge'),
   stateLabel: $('#state-label'),
   conn: $('#conn-status'),
+  miniTimer: $('#mini-timer'),
   stage: $('#stage'),
   rolePanel: $('#role-panel'),
   teams: $('#teams'),
@@ -96,6 +98,7 @@ function start() {
     }
     await loadMeta();                 // 영웅 이름표/제한값을 받은 뒤에 화면을 만든다
     ctx = { conn, role: info.role, teamId: info.teamId, pick };
+    document.body.dataset.role = info.role;      // css/mobile.css 가 역할별 화면을 정할 때 쓴다
     el.role.textContent = ROLE_LABEL[info.role];
     el.role.className = `badge badge-${info.role}`;
 
@@ -106,13 +109,17 @@ function start() {
     } else {
       view = (await import('./views/observer.js')).mountObserver(el.rolePanel, ctx);
     }
+    if (info.role === 'leader') trackFixedBar(el.rolePanel);   // 모바일에서 아래에 고정되는 입찰 바의 높이 추적
     chat = mountChat(el.chat, conn, info.chat);
     render(conn.state);
   });
 
   // 남은 시간 표시는 0.1초 단위로 로컬에서 갱신한다 (서버가 1초마다 보정)
   setInterval(() => {
-    if (conn.state) common.renderTimer(timerEl, conn.state, conn.remainingMs());
+    if (conn.state) {
+      common.renderTimer(timerEl, conn.state, conn.remainingMs());
+      syncMiniTimer(el.miniTimer, timerEl);
+    }
   }, 100);
 
   conn.connect();
