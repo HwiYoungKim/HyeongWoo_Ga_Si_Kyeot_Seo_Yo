@@ -151,8 +151,18 @@ def parse_team_entries(entries: Any, expected: int) -> list[dict[str, Any]]:
                                           field=f"{i}번 팀장 포지션"),
             "handicap": clean_int(entry.get("handicap", 0), *config.HANDICAP_RANGE,
                                   field=f"{i}번 팀장 핸디캡"),
+            "leader_image": _parse_leader_image(entry.get("leader_image"), i),
         })
     return out
+
+
+def _parse_leader_image(value: Any, index: int) -> str:
+    """팀장 프로필 아이콘: 없으면 빈 문자열, 있으면 이미지 id 형식이어야 한다. (존재 여부는 호출한 쪽이 확인)"""
+    if value is None or value == "":
+        return ""
+    if not is_valid_image_id(value):
+        raise ValidationError(f"{index}번 팀장 아이콘: 올바르지 않은 이미지입니다.")
+    return value
 
 
 def is_valid_image_id(value: Any) -> bool:

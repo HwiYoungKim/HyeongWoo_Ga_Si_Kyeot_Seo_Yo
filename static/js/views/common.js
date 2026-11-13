@@ -4,6 +4,7 @@ import { h, replace } from '../lib/dom.js';
 import { fmt, activityText, teamName, STATE_LABEL } from '../lib/format.js';
 import { rolesText } from '../lib/meta.js';
 import { roleIcons, heroChips, profileLine, gallery } from './profile.js';
+import { setImage } from '../lib/images.js';
 
 const RUNNING = new Set(['MAIN_AUCTION', 'UNSOLD_AUCTION']);
 export const isRunning = (state) => RUNNING.has(state.state) && state.lot;
@@ -79,6 +80,14 @@ export function renderTimer(el, state, remainingMs) {
 }
 
 // ---------------------------------------------------------------- 팀 현황
+// 팀장 프로필 아이콘 (없으면 아무것도 그리지 않는다)
+export function leaderIcon(conn, team) {
+  if (!conn || !team.leader_image) return null;
+  const img = h('img', { class: 'leader-icon', alt: '' });
+  setImage(img, conn, team.leader_image);
+  return img;
+}
+
 export function renderTeams(box, state, ctx) {
   const lot = isRunning(state) ? state.lot : null;
   const online = new Set(state.online_teams);
@@ -94,6 +103,7 @@ export function renderTeams(box, state, ctx) {
         return h('div', { class: classes.join(' ') },
           h('div', { class: 'team-head' },
             h('span', { class: online.has(t.id) ? 'dot dot-on' : 'dot', title: online.has(t.id) ? '접속 중' : '미접속' }),
+            leaderIcon(ctx.conn, t),
             h('strong', { text: t.leader_name }),
             t.leader_position ? h('span', { class: 'chip', text: t.leader_position }) : null,
           ),

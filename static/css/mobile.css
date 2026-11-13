@@ -128,6 +128,7 @@ html[data-device="mobile"] #toasts {
 /* 팀 입력줄: 번호 / 이름·포지션 / 핸디캡 (핸디캡 칸이 24px 로 찌그러지던 문제) */
 html[data-device="mobile"] .team-row { grid-template-columns: 1.5rem minmax(0, 1fr) minmax(0, 1fr); }
 html[data-device="mobile"] .team-row > input:last-child { grid-column: 2 / -1; }
+html[data-device="mobile"] .team-row > .leader-icon-pick { grid-column: 2 / -1; }
 html[data-device="mobile"] .player-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 html[data-device="mobile"] .pc-top,
 html[data-device="mobile"] .pc-mid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }

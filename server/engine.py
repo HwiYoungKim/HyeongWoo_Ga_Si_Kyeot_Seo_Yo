@@ -203,6 +203,7 @@ def apply_teams(room: Room, entries: list[dict[str, Any]]) -> None:
     for team, entry in zip(room.teams, entries):
         team.leader_name = entry["leader_name"]
         team.leader_position = entry["leader_position"]
+        team.leader_image = entry.get("leader_image", "")
         team.handicap = entry["handicap"]
     _recompute_points(room)
     _touch(room)

@@ -398,6 +398,10 @@ class SocketApi:
                              field="팀당 인원") if "members_per_team" in data else None)
         teams = parse_team_entries(data["teams"], room.num_teams) if "teams" in data else None
         players = parse_player_entries(data["players"]) if "players" in data else None
+        if teams is not None:
+            for i, t in enumerate(teams, start=1):
+                if t["leader_image"] and not self.manager.images.exists(t["leader_image"]):
+                    raise ValidationError(f"{i}번 팀장 아이콘: 업로드되지 않았거나 삭제된 이미지입니다. 다시 올려 주세요.")
         if players is not None:
             for i, p in enumerate(players, start=1):
                 for image_id in p["images"]:
@@ -414,6 +418,7 @@ class SocketApi:
             if parsed_settings is not None:
                 engine.apply_settings(room, parsed_settings)
             if teams is not None:
+                previously_saved.update(t.leader_image for t in room.teams if t.leader_image)
                 engine.apply_teams(room, teams)
             if players is not None:
                 # 이번 저장으로 "빠지는" 이미지를 기억해 둔다 (이전에 저장돼 있었는데 이번에는 없는 것).
@@ -429,10 +434,10 @@ class SocketApi:
 
         previously_saved: set[str] = set()
         result = self._run(sess, apply)
-        if result.get("ok") and players is not None:
-            kept = {iid for p in players for iid in p["images"]}
+        if result.get("ok") and (players is not None or teams is not None):
             # 주최자가 제거한 이미지는 어디에서도 쓰이지 않으면 바로 삭제한다 (개인정보 최소 보관).
-            self.manager.gc_images(grace_sec=0, only=previously_saved - kept)
+            # gc_images 는 방·명부에 아직 연결된 이미지는 건드리지 않으므로 후보만 넘기면 된다.
+            self.manager.gc_images(grace_sec=0, only=previously_saved)
             self.manager.gc_images()        # 그 밖의 연결 안 된 이미지는 유예 시간 후 정리
         return result
 

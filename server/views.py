@@ -42,12 +42,14 @@ def visible_image_ids(room: Room, role: str) -> set[str]:
 
     - host: 이 방에 등록된 모든 선수의 이미지.
     - 그 외(팀장/관전자): 지금 경매 중인 매물의 이미지뿐. 대기 중인 선수의 이미지는 받을 수 없다.
+    - 팀장 프로필 아이콘은 팀 현황에 항상 보이므로 모든 역할이 받을 수 있다.
     """
+    leader_icons = {t.leader_image for t in room.teams if t.leader_image}
     if role == "host":
-        return {iid for p in room.players for iid in p.images}
+        return leader_icons | {iid for p in room.players for iid in p.images}
     if room.current_lot is not None and engine.is_running(room) and 0 <= room.current_lot < len(room.players):
-        return set(room.players[room.current_lot].images)
-    return set()
+        return leader_icons | set(room.players[room.current_lot].images)
+    return leader_icons
 
 
 def _activity(room: Room) -> list[dict[str, Any]]:
@@ -75,6 +77,7 @@ def _base(room: Room, now: float, online_teams: Iterable[int], host_online: bool
             "id": t.id,
             "leader_name": t.leader_name,
             "leader_position": t.leader_position,
+            "leader_image": t.leader_image,
             "points": t.points,
             "initial_points": t.initial_points,
             "open_slots": max(0, engine.open_slots(room, t)),

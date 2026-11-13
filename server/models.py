@@ -89,6 +89,7 @@ class Team:
     id: int
     leader_name: str
     leader_position: str = ""
+    leader_image: str = ""                # 팀장 프로필 아이콘 (이미지 id, 없으면 빈 문자열)
     token_hash: str = ""                  # 팀장 접속 토큰의 SHA-256 (원문은 저장하지 않음)
     handicap: int = 0
     initial_points: int = 0
@@ -100,7 +101,8 @@ class Team:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Team":
-        return cls(**data)
+        known = cls.__dataclass_fields__
+        return cls(**{k: v for k, v in data.items() if k in known})
 
 
 @dataclass

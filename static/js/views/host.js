@@ -4,7 +4,8 @@ import { h, replace, toast, copyText } from '../lib/dom.js';
 import { fmt } from '../lib/format.js';
 import { isRunning } from './common.js';
 import { createPlayerRow } from './player_form.js';
-import { loadMeta, heroName } from '../lib/meta.js';
+import { loadMeta, heroName, playerLimits } from '../lib/meta.js';
+import { setImage, uploadImage } from '../lib/images.js';
 import { isLoopbackUrl, defaultShareBase, LOOPBACK_WARNING } from '../lib/share.js';
 import { roleIcons } from './profile.js';
 
@@ -67,6 +68,41 @@ export function mountHost(root, ctx) {
     h('label', { class: 'field' }, h('span', { text: '경매 순서' }), f.order_public),
   );
 
+  // 팀장 프로필 아이콘 선택기: 미리보기 + 올리기/바꾸기 + 제거. 값은 이미지 id (없으면 빈 문자열).
+  function leaderIconPicker(index) {
+    let imageId = '';
+    const box = h('div', { class: 'leader-icon-pick' });
+    const fileInput = h('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp,image/gif', class: 'file-input',
+      'aria-label': `팀장 ${index + 1} 아이콘 선택` });
+    const pickBtn = h('button', { type: 'button', class: 'btn btn-sm', onClick: () => fileInput.click() });
+    const clearBtn = h('button', { type: 'button', class: 'btn btn-sm', text: '제거', onClick: () => { set(''); dirty = true; } });
+    function paint() {
+      const preview = h('span', { class: 'leader-icon leader-icon-empty', text: '?', title: '아이콘 없음' });
+      let shown = preview;
+      if (imageId) {
+        shown = h('img', { class: 'leader-icon', alt: `팀장 ${index + 1} 아이콘` });
+        setImage(shown, conn, imageId);
+      }
+      pickBtn.textContent = imageId ? '바꾸기' : '아이콘';
+      replace(box, shown, pickBtn, imageId ? clearBtn : null, fileInput);
+    }
+    function set(id) { imageId = id || ''; paint(); }
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files && fileInput.files[0];
+      fileInput.value = '';
+      if (!file) return;
+      pickBtn.disabled = true;
+      pickBtn.textContent = '올리는 중…';
+      const res = await uploadImage(conn, file, playerLimits().max_upload_bytes);
+      pickBtn.disabled = false;
+      if (!res.ok) { toast(res.message, 'error'); paint(); return; }
+      set(res.id);
+      dirty = true;
+    });
+    paint();
+    return { el: box, get: () => imageId, set };
+  }
+
   // 팀장 표
   const teamRows = [];
   const teamTable = h('div', { class: 'table-like' });
@@ -78,9 +114,10 @@ export function mountHost(root, ctx) {
         name: h('input', { type: 'text', maxlength: 20, placeholder: `팀장 ${i + 1}` }),
         pos: h('input', { type: 'text', maxlength: 20, placeholder: '포지션' }),
         handicap: h('input', { type: 'number', step: 1, placeholder: '핸디캡(±P)', value: 0 }),
+        icon: leaderIconPicker(i),
       };
       teamRows.push(row);
-      rows.push(h('div', { class: 'row-grid team-row' }, h('span', { class: 'idx', text: String(i + 1) }), row.name, row.pos, row.handicap));
+      rows.push(h('div', { class: 'row-grid team-row' }, h('span', { class: 'idx', text: String(i + 1) }), row.icon.el, row.name, row.pos, row.handicap));
     }
     replace(teamTable, rows);
   }
@@ -89,7 +126,7 @@ export function mountHost(root, ctx) {
   const playerRows = [];
   const playerTable = h('div', { class: 'player-list' });
   const counter = h('strong', { class: 'counter' });
-  function addPlayerRow(p = {}) {
+  function addPlayerRow(p = {}, { repaint = true } = {}) {
     const row = createPlayerRow({
       data: p, conn,
       onChange: () => { dirty = true; updateCounter(); },
@@ -103,14 +140,13 @@ export function mountHost(root, ctx) {
     });
     playerRows.push(row);
     playerTable.appendChild(row.el);
-    updateCounter();
-    paintRoster();
+    if (repaint) { updateCounter(); paintRoster(); }
     return row;
   }
   function setPlayers(list) {
     playerRows.length = 0;
     replace(playerTable);
-    for (const p of list) addPlayerRow(p);
+    for (const p of list) addPlayerRow(p, { repaint: false });
     updateCounter();
     paintRoster();
   }
@@ -146,6 +182,19 @@ export function mountHost(root, ctx) {
   let roster = [];
   let rosterLoaded = false;
   const armed = new Set();      // "정말 삭제" 확인 대기 중인 uid
+  const picked = new Set();     // 일괄 추가용으로 체크한 uid
+  const rosterTools = h('div', { class: 'row wrap roster-tools' });
+  // 명부의 여러 명을 한 번에 이 방에 추가한다 (이미 추가된 사람은 건너뛴다).
+  function addFromRoster(list) {
+    const inRoom = new Set(playerRows.map((r) => r.uid).filter(Boolean));
+    const fresh = list.filter((p) => !inRoom.has(p.uid));
+    for (const p of fresh) { addPlayerRow(p, { repaint: false }); picked.delete(p.uid); }
+    if (!fresh.length) return;
+    dirty = true;
+    updateCounter();
+    paintRoster();
+    toast(`${fresh.length}명을 추가했습니다. 아래 '설정 저장'을 눌러야 반영됩니다.`, 'ok');
+  }
   async function loadRoster() {
     const res = await conn.request('host_roster_list');
     if (res.ok) { roster = res.players; rosterLoaded = true; paintRoster(); }
@@ -153,6 +202,28 @@ export function mountHost(root, ctx) {
   function paintRoster() {
     if (!rosterLoaded) return;
     const inRoom = new Set(playerRows.map((r) => r.uid).filter(Boolean));
+    for (const uid of [...picked]) if (inRoom.has(uid) || !roster.some((p) => p.uid === uid)) picked.delete(uid);
+    const addable = roster.filter((p) => !inRoom.has(p.uid));
+    // 목록을 다시 그리면 스크롤이 맨 위로 돌아가므로, 그리기 전 위치를 기억했다가 되돌린다.
+    const listTop = rosterList.scrollTop;
+    const pageX = window.scrollX;
+    const pageY = window.scrollY;
+    replace(rosterTools,
+      h('button', { type: 'button', class: 'btn btn-sm btn-primary', disabled: addable.length === 0,
+        text: addable.length ? `남은 ${addable.length}명 모두 추가` : '모두 추가됨',
+        onClick: () => addFromRoster(addable) }),
+      h('button', { type: 'button', class: 'btn btn-sm', disabled: picked.size === 0,
+        text: `선택한 ${picked.size}명 추가`,
+        onClick: () => addFromRoster(roster.filter((p) => picked.has(p.uid))) }),
+      h('button', { type: 'button', class: 'btn btn-sm', disabled: addable.length === 0,
+        text: picked.size && picked.size === addable.length ? '선택 해제' : '전체 선택',
+        onClick: () => {
+          const all = picked.size === addable.length;
+          picked.clear();
+          if (!all) for (const p of addable) picked.add(p.uid);
+          paintRoster();
+        } }),
+      h('span', { class: 'sub', text: `명부 ${roster.length}명 · 이 방에 ${roster.length - addable.length}명 추가됨` }));
     replace(rosterList, roster.length
       ? roster.map((p) => {
           const used = inRoom.has(p.uid);
@@ -169,7 +240,12 @@ export function mountHost(root, ctx) {
               const res = await act('host_roster_delete', { uid: p.uid });
               if (res.ok) { roster = res.players; paintRoster(); toast('명부에서 삭제했습니다.', 'ok'); }
             } });
+          const check = h('input', { type: 'checkbox', class: 'roster-check', disabled: used,
+            'aria-label': `${p.name} 선택`,
+            onChange: () => { if (check.checked) picked.add(p.uid); else picked.delete(p.uid); paintRoster(); } });
+          check.checked = picked.has(p.uid);
           return h('div', { class: 'roster-item' },
+            check,
             ...roleIcons(p),
             h('strong', { text: p.name }),
             p.battletag ? h('span', { class: 'chip chip-tag', text: p.battletag }) : null,
@@ -180,15 +256,18 @@ export function mountHost(root, ctx) {
             del);
         })
       : h('p', { class: 'sub', text: '저장된 선수가 없습니다. 설정을 저장하면 등록한 선수가 자동으로 명부에 저장됩니다.' }));
+    rosterList.scrollTop = listTop;
+    if (window.scrollX !== pageX || window.scrollY !== pageY) window.scrollTo(pageX, pageY);
   }
   const rosterBox = h('details', { class: 'panel-sub' },
     h('summary', { text: '저장된 선수 명부 (영구 보관)' }),
     h('p', { class: 'sub', text: '설정 저장 때마다 선수 정보와 이미지가 서버 PC에 계속 보관됩니다. 방을 삭제하거나 서버를 껐다 켜도 남아 있고, 다음 경매에서 불러올 수 있습니다.' }),
+    rosterTools,
     rosterList);
 
   const setupBox = h('div', { class: 'host-setup' },
     h('h3', { text: '1. 경매 설정' }), settingsForm,
-    h('h3', { text: '2. 팀장 (이름 · 포지션 · 시작 포인트 가감)' }), teamTable,
+    h('h3', { text: '2. 팀장 (아이콘 · 이름 · 포지션 · 시작 포인트 가감)' }), teamTable,
     h('h3', { text: '3. 매물(선수) 등록' }),
     h('p', {}, counter, h('span', { class: 'sub', text: '  매물 수 = 팀 수 × (팀당 인원 − 1)' })),
     rosterBox,
@@ -218,6 +297,7 @@ export function mountHost(root, ctx) {
       },
       teams: teamRows.map((r) => ({
         leader_name: r.name.value, leader_position: r.pos.value, handicap: int(r.handicap),
+        leader_image: r.icon.get(),
       })),
       players: playerRows.filter((r) => r.hasName()).map((r) => r.getValue()),
     };
@@ -243,6 +323,7 @@ export function mountHost(root, ctx) {
       teamRows[i].name.value = t.leader_name;
       teamRows[i].pos.value = t.leader_position;
       teamRows[i].handicap.value = t.handicap ?? 0;
+      teamRows[i].icon.set(t.leader_image);
     });
     setPlayers(state.players || []);
     dirty = false;

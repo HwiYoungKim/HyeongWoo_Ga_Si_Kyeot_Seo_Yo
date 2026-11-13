@@ -28,7 +28,10 @@ def register_routes(app: Flask, manager: RoomManager, cfg: AppConfig, admin_fail
         return resp
 
     image_failures = security.FailureLimiter(limit=30, window=60, lockout=120)
-    image_reads = security.RateLimiter(capacity=60, refill_per_sec=20)
+    # 터널(--tunnel)을 쓰면 참가자 전원이 같은 IP(127.0.0.1)로 보이고 주최자 화면도 같은 IP 다.
+    # 매물이 바뀌는 순간 30명 x 사진 2장 + 주최자 화면의 썸네일이 한꺼번에 몰려도 막히지 않는 크기로 둔다.
+    # (이미지 API 는 토큰이 있어야 하고 방마다 받을 수 있는 이미지가 정해져 있다.)
+    image_reads = security.RateLimiter(capacity=config.IMAGE_READ_BURST, refill_per_sec=config.IMAGE_READ_PER_SEC)
     image_uploads = security.RateLimiter(capacity=8, refill_per_sec=0.5)
 
     def _same_origin() -> bool:

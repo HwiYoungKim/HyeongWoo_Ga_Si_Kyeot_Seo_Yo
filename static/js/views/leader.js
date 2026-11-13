@@ -2,7 +2,7 @@
 // 입력창은 한 번만 만들고 상태가 바뀔 때는 값만 갱신한다 (다른 사람 입찰이 들어와도 입력 중인 숫자가 지워지지 않게).
 import { h, replace, toast } from '../lib/dom.js';
 import { fmt } from '../lib/format.js';
-import { isRunning } from './common.js';
+import { isRunning, leaderIcon } from './common.js';
 
 export function mountLeader(root, ctx) {
   const { conn } = ctx;
@@ -54,6 +54,7 @@ export function mountLeader(root, ctx) {
     const canBid = running && !state.paused && !iAmHighest && slotsLeft > 0;
 
     replace(info,
+      leaderIcon(conn, me),
       h('strong', { text: me.leader_name }),
       h('span', { text: ` · 남은 포인트 ${fmt(me.points)}P` }),
       running ? h('span', { text: ` · 입찰 가능 최대 ${fmt(me.max_bid)}P` }) : null,

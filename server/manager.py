@@ -137,6 +137,7 @@ class RoomManager:
             with handle.lock:
                 for p in handle.room.players:
                     referenced.update(p.images)
+                referenced.update(t.leader_image for t in handle.room.teams if t.leader_image)
         removed = 0
         for image_id, age in self.images.ages().items():
             if only is not None and image_id not in only:
